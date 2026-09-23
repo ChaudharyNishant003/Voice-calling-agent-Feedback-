@@ -9,19 +9,23 @@ Parallel business track (not code, but blocking production): OPEN QUESTIONS #1, 
 ---
 
 ## Sprint 0 — Foundations
-- [ ] **S0.1 Monorepo scaffold** (backend, dashboard, eval, infra) per doc 01 §3.
+- [x] **S0.1 Monorepo scaffold** (backend, dashboard, eval, infra) per doc 01 §3.
   Done when: `make up` starts all services; `/health/ready` green; dashboard login page renders.
-- [ ] **S0.2 Tooling**: ruff, mypy strict, eslint, tsc strict, import-linter contracts (domain/services
+- [x] **S0.2 Tooling**: ruff, mypy strict, eslint, tsc strict, import-linter contracts (domain/services
   cannot import adapters' vendor modules), pre-commit + gitleaks.
   Done when: `make lint` passes and a deliberate violation fails.
-- [ ] **S0.3 Core**: settings, structlog + redaction processor, error hierarchy + FastAPI handler,
+- [x] **S0.3 Core**: settings, structlog + redaction processor, error hierarchy + FastAPI handler,
   UUIDv7 prefixed IDs, injectable clock, phone normalisation/hash.
   Done when: unit tests for redaction (no phone/text leaks), error envelope, E.164 cases.
-- [ ] **S0.4 Adapter interfaces + fakes + registry + circuit breaker.**
+- [x] **S0.4 Adapter interfaces + fakes + registry + circuit breaker.**
   Done when: fakes satisfy Protocols (mypy), failure injection works.
-- [ ] **S0.5 Observability base**: Prometheus endpoint, OTel tracing, Sentry scrubbed, `call_events` writer.
-- [ ] **S0.6 CI pipeline** (doc 08 §11) + ADRs 0001–0004.
-Exit: CI green on scaffold; ADRs merged.
+- [x] **S0.5 Observability base**: Prometheus endpoint, OTel tracing, Sentry scrubbed, `call_events` writer.
+  Note: `call_events` writer is an in-memory seam (`app/services/metrics_service.py`) until the
+  table lands in S1.1 — see that module's docstring.
+- [x] **S0.6 CI pipeline** (doc 08 §11) + ADRs 0001–0004.
+Exit: CI green on scaffold; ADRs merged. ✅ Verified locally: ruff/mypy --strict/import-linter/
+bandit clean, 47 unit tests pass, full docker-compose stack boots with all services healthy and
+the dashboard login stub renders. GitHub Actions CI itself has not run yet (no remote/PR).
 
 ## Sprint 1 — Data, auth, ingestion, eligibility
 - [ ] **S1.1 Migrations 0001–0011** (doc 02 §6) incl. RLS + grants; up/down/up in CI.
