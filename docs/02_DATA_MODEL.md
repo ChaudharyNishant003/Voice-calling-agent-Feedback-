@@ -396,7 +396,7 @@ CREATE TABLE cost_rates (                        -- versioned unit prices for te
 | Closed case needs resolution note | CHECK + `case_lifecycle.py` guard |
 | Account cannot go `live` without `default_case_owner_id` and caller ID | service guard `PFA-ACC-003` |
 | Consent before survey rows | `survey_responses` insert guarded: service rejects if `calls.consent_state` ∉ {granted, granted_unrecorded} (`PFA-CNS-004`) |
-| Audit log append-only | DB role `pfa_app` has INSERT only on `audit_log` |
+| Audit log append-only | DB roles have no UPDATE/DELETE on `audit_log` (SELECT + INSERT only — SELECT is needed so `audit_service.record()` can read the chain tail it hashes against, and so it can be viewed at all; see migration 0011) |
 
 ## 4. JSON config shapes
 

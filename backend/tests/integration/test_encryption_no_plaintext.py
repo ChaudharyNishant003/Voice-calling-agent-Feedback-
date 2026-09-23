@@ -52,77 +52,80 @@ async def test_patient_and_transcript_have_no_plaintext_phone_or_text(
         "The billing counter made me wait ninety minutes and nobody explained why."
     )
 
-    await app_session.begin()
-    await set_account_scope(app_session, account.account_id)
+    # Everything — inserts and the read-back scan — happens in one transaction: `set_account_scope`
+    # uses `SET LOCAL` semantics, which only lasts until the transaction ends. Committing partway
+    # through and issuing further RLS-protected queries without re-scoping would silently lose the
+    # scope for those later queries.
+    async with app_session.begin():
+        await set_account_scope(app_session, account.account_id)
 
-    dek = await get_or_create_dek(app_session, account.account_id, kek=_KEK)
-    e164 = normalize_e164(raw_phone)
+        dek = await get_or_create_dek(app_session, account.account_id, kek=_KEK)
+        e164 = normalize_e164(raw_phone)
 
-    patient = Patient(
-        account_id=account.account_id,
-        external_patient_id="ext-pat-1",
-        phone_hash=bytes.fromhex(phone_hash(e164, pepper=_PEPPER)),
-        phone_e164_enc=encrypt(e164, dek),
-        phone_last4=e164[-4:],
-    )
-    app_session.add(patient)
-    await app_session.flush()
-
-    visit = Visit(
-        account_id=account.account_id,
-        location_id=location.location_id,
-        patient_ref_id=patient.patient_ref_id,
-        external_visit_key="visit-key-1",
-        visit_date=date.today(),
-        visit_type=VisitType.outpatient,
-        department_id=department.department_id,
-        patient_age=45,
-    )
-    app_session.add(visit)
-    await app_session.flush()
-
-    call = Call(
-        account_id=account.account_id,
-        visit_id=visit.visit_id,
-        attempt_no=1,
-        scheduled_at=datetime.now(UTC),
-    )
-    app_session.add(call)
-    await app_session.flush()
-
-    transcript = Transcript(
-        call_id=call.call_id,
-        turn_index=0,
-        speaker=Speaker.patient,
-        text_enc=encrypt(raw_transcript_text, dek),
-        start_ms=0,
-        end_ms=4200,
-        retention_until=datetime.now(UTC) + timedelta(days=180),
-    )
-    app_session.add(transcript)
-    await app_session.commit()
-
-    # Scan the raw columns as text — encrypted bytea columns must not contain the plaintext, and
-    # must not contain any long digit run (a phone number) once rendered.
-    patients_row = (
-        await app_session.execute(
-            text(
-                "SELECT encode(phone_e164_enc, 'escape') AS enc, phone_last4 FROM patients "
-                "WHERE patient_ref_id = :id"
-            ),
-            {"id": patient.patient_ref_id},
+        patient = Patient(
+            account_id=account.account_id,
+            external_patient_id="ext-pat-1",
+            phone_hash=bytes.fromhex(phone_hash(e164, pepper=_PEPPER)),
+            phone_e164_enc=encrypt(e164, dek),
+            phone_last4=e164[-4:],
         )
-    ).one()
-    transcripts_row = (
-        await app_session.execute(
-            text(
-                "SELECT encode(text_enc, 'escape') AS enc FROM transcripts "
-                "WHERE transcript_id = :id"
-            ),
-            {"id": transcript.transcript_id},
+        app_session.add(patient)
+        await app_session.flush()
+
+        visit = Visit(
+            account_id=account.account_id,
+            location_id=location.location_id,
+            patient_ref_id=patient.patient_ref_id,
+            external_visit_key="visit-key-1",
+            visit_date=date.today(),
+            visit_type=VisitType.outpatient,
+            department_id=department.department_id,
+            patient_age=45,
         )
-    ).one()
-    await app_session.commit()
+        app_session.add(visit)
+        await app_session.flush()
+
+        call = Call(
+            account_id=account.account_id,
+            visit_id=visit.visit_id,
+            attempt_no=1,
+            scheduled_at=datetime.now(UTC),
+        )
+        app_session.add(call)
+        await app_session.flush()
+
+        transcript = Transcript(
+            call_id=call.call_id,
+            turn_index=0,
+            speaker=Speaker.patient,
+            text_enc=encrypt(raw_transcript_text, dek),
+            start_ms=0,
+            end_ms=4200,
+            retention_until=datetime.now(UTC) + timedelta(days=180),
+        )
+        app_session.add(transcript)
+        await app_session.flush()
+
+        # Scan the raw columns as text — encrypted bytea columns must not contain the plaintext,
+        # and must not contain any long digit run (a phone number) once rendered.
+        patients_row = (
+            await app_session.execute(
+                text(
+                    "SELECT encode(phone_e164_enc, 'escape') AS enc, phone_last4 FROM patients "
+                    "WHERE patient_ref_id = :id"
+                ),
+                {"id": patient.patient_ref_id},
+            )
+        ).one()
+        transcripts_row = (
+            await app_session.execute(
+                text(
+                    "SELECT encode(text_enc, 'escape') AS enc FROM transcripts "
+                    "WHERE transcript_id = :id"
+                ),
+                {"id": transcript.transcript_id},
+            )
+        ).one()
 
     assert raw_phone not in patients_row.enc
     assert e164 not in patients_row.enc

@@ -8,11 +8,23 @@ Creates the two roles the RLS policies in 0010 are actually enforced against (do
 §5 / §3): `pfa_app` (the app's runtime connection — RLS applies because it isn't the table owner)
 and `pfa_superadmin` (BYPASSRLS, for audited cross-tenant access).
 
-Privilege choice: SELECT/INSERT/UPDATE everywhere except `audit_log` (INSERT-only, doc 02 §3 —
-append-only, tamper evidence depends on this). No blanket DELETE grant: nothing in the spec deletes
-rows outright — retention/deletion workflows tombstone/anonymise via UPDATE (doc 07 §8), and
-`ON DELETE CASCADE` FKs aren't exercised by any documented app flow. If a later sprint needs row
-deletion somewhere specific, grant it there with a clear reason rather than broadening this.
+Privilege choice: SELECT/INSERT/UPDATE everywhere except `audit_log`. No blanket DELETE grant:
+nothing in the spec deletes rows outright — retention/deletion workflows tombstone/anonymise via
+UPDATE (doc 07 §8), and `ON DELETE CASCADE` FKs aren't exercised by any documented app flow. If a
+later sprint needs row deletion somewhere specific, grant it there with a clear reason rather than
+broadening this.
+
+`audit_log` is append-only for both roles: no UPDATE, ever — that's the actual integrity property
+doc 07 §6's tamper-evidence chain depends on (a stored `row_hash`/`prev_hash` can never be quietly
+rewritten). Both roles keep SELECT + INSERT on it: `audit_service.record()` (the only code path
+that's allowed to write a row) has to read the current chain tail to compute the next `prev_hash`,
+which is impossible if the role that writes can't also read; doc 07 §6 separately requires an
+"admin UI view + API" for MVP and a nightly integrity-verification job, both of which read it too.
+Earlier drafts of this migration read doc 02 §3's "pfa_app has INSERT only on audit_log" as
+excluding SELECT as well — that reading turned out to be self-defeating (verified by an actual
+integration test failure: `pfa_app` couldn't read back the chain tail it needs to write the next
+row), so it's interpreted here as "no UPDATE/DELETE" instead, which is the constraint that actually
+matters for tamper-evidence.
 """
 
 from __future__ import annotations
@@ -55,9 +67,10 @@ def upgrade() -> None:
         op.execute(f"GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA public TO {role}")
         op.execute(f"GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO {role}")
 
-    # audit_log is append-only for both roles: revoke SELECT/UPDATE, leave INSERT.
+    # audit_log is append-only: no UPDATE for either role (see module docstring for why SELECT
+    # stays granted — the broad loop above already covers it).
     for role in ("pfa_app", "pfa_superadmin"):
-        op.execute(f"REVOKE SELECT, UPDATE ON audit_log FROM {role}")
+        op.execute(f"REVOKE UPDATE ON audit_log FROM {role}")
 
 
 def downgrade() -> None:

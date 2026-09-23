@@ -1,4 +1,9 @@
-"""Python mirrors of the Postgres enum types (docs/02_DATA_MODEL.md §1).
+"""SQLAlchemy-facing enum wiring (docs/02_DATA_MODEL.md §1).
+
+The actual vocabulary lives in `app.domain.enums` — this module only adds the SQLAlchemy-specific
+`pg_enum()` helper and re-exports the classes, so model columns keep doing
+`from app.db.models.enums import VisitType, pg_enum` while `domain/eligibility.py` (pure — no
+`app.db` imports allowed) can use the same vocabulary via `app.domain.enums` directly.
 
 Migration 0001 creates the actual `CREATE TYPE ... AS ENUM` statements; model columns reference
 these via `pg_enum()` with `create_type=False` so Alembic never tries to create them a second time.
@@ -10,146 +15,49 @@ import enum
 
 from sqlalchemy.dialects.postgresql import ENUM as PGEnum
 
+from app.domain.enums import (
+    AccountStatus,
+    CallStatus,
+    CampaignType,
+    CasePriority,
+    CaseStatus,
+    ConsentState,
+    DeletionScope,
+    DeletionStatus,
+    EligibilityStatus,
+    IngestionStatus,
+    RespondentType,
+    Sentiment,
+    Speaker,
+    SuppressionReason,
+    Urgency,
+    UserRole,
+    VisitType,
+)
+
+__all__ = [
+    "AccountStatus",
+    "CallStatus",
+    "CampaignType",
+    "CasePriority",
+    "CaseStatus",
+    "ConsentState",
+    "DeletionScope",
+    "DeletionStatus",
+    "EligibilityStatus",
+    "IngestionStatus",
+    "RespondentType",
+    "Sentiment",
+    "Speaker",
+    "SuppressionReason",
+    "Urgency",
+    "UserRole",
+    "VisitType",
+    "pg_enum",
+]
+
 
 def pg_enum(python_enum: type[enum.Enum], name: str) -> PGEnum:
     return PGEnum(
         python_enum, name=name, create_type=False, values_callable=lambda e: [m.value for m in e]
     )
-
-
-class AccountStatus(enum.StrEnum):
-    onboarding = "onboarding"
-    live = "live"
-    paused = "paused"
-    offboarded = "offboarded"
-
-
-class VisitType(enum.StrEnum):
-    outpatient = "outpatient"
-    diagnostic = "diagnostic"
-
-
-class EligibilityStatus(enum.StrEnum):
-    pending = "pending"
-    eligible = "eligible"
-    suppressed = "suppressed"
-    review = "review"
-
-
-class SuppressionReason(enum.StrEnum):
-    minor = "minor"
-    invalid_number = "invalid_number"
-    opt_out = "opt_out"
-    dnd = "dnd"
-    duplicate_encounter = "duplicate_encounter"
-    already_called_visit = "already_called_visit"
-    frequency_cap = "frequency_cap"
-    stale_visit = "stale_visit"
-    shared_number_review = "shared_number_review"
-    consent_declined_visit = "consent_declined_visit"
-    out_of_scope_visit_type = "out_of_scope_visit_type"
-    missing_required_field = "missing_required_field"
-    deleted_patient = "deleted_patient"
-
-
-class CallStatus(enum.StrEnum):
-    queued = "queued"
-    dialing = "dialing"
-    ringing = "ringing"
-    answered = "answered"
-    in_progress = "in_progress"
-    completed = "completed"
-    partial = "partial"
-    abandoned_pre_consent = "abandoned_pre_consent"
-    consent_declined = "consent_declined"
-    voicemail = "voicemail"
-    no_answer = "no_answer"
-    busy = "busy"
-    failed_telephony = "failed_telephony"
-    failed_system = "failed_system"
-    cancelled = "cancelled"
-
-
-class ConsentState(enum.StrEnum):
-    not_asked = "not_asked"
-    granted = "granted"
-    declined = "declined"
-    withdrawn = "withdrawn"
-    granted_unrecorded = "granted_unrecorded"
-
-
-class RespondentType(enum.StrEnum):
-    patient = "patient"
-    proxy = "proxy"
-    unknown = "unknown"
-
-
-class CampaignType(enum.StrEnum):
-    service_feedback = "service_feedback"
-    promotional = "promotional"
-
-
-class Sentiment(enum.StrEnum):
-    negative = "negative"
-    neutral = "neutral"
-    positive = "positive"
-
-
-class Urgency(enum.StrEnum):
-    routine = "routine"
-    service_failure = "service_failure"
-    safety_concern = "safety_concern"
-
-
-class CaseStatus(enum.StrEnum):
-    open = "open"
-    acknowledged = "acknowledged"
-    assigned = "assigned"
-    in_progress = "in_progress"
-    resolved = "resolved"
-    closed = "closed"
-    reopened = "reopened"
-    merged = "merged"
-    invalid = "invalid"
-
-
-class CasePriority(enum.StrEnum):
-    p1 = "p1"
-    p2 = "p2"
-    p3 = "p3"
-
-
-class UserRole(enum.StrEnum):
-    super_admin = "super_admin"
-    admin = "admin"
-    quality = "quality"
-    dept_owner = "dept_owner"
-    read_only = "read_only"
-
-
-class Speaker(enum.StrEnum):
-    agent = "agent"
-    patient = "patient"
-    system = "system"
-
-
-class DeletionScope(enum.StrEnum):
-    patient = "patient"
-    account = "account"
-
-
-class DeletionStatus(enum.StrEnum):
-    requested = "requested"
-    approved = "approved"
-    running = "running"
-    completed = "completed"
-    failed = "failed"
-    rejected = "rejected"
-
-
-class IngestionStatus(enum.StrEnum):
-    received = "received"
-    validating = "validating"
-    validated = "validated"
-    failed = "failed"
-    processed = "processed"

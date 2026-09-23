@@ -29,25 +29,38 @@ the dashboard login stub renders. GitHub Actions CI itself has not run yet (no r
 
 ## Sprint 1 — Data, auth, ingestion, eligibility
 - [x] **S1.1 Migrations 0001–0011** (doc 02 §6) incl. RLS + grants; up/down/up in CI.
-  Verified: up/down/up run clean against a real Postgres (docker-compose); RLS confirmed on tenant
-  tables (`relrowsecurity=t`); `pfa_app`/`pfa_superadmin` roles + grants match doc 02 §3 exactly
-  (audit_log INSERT-only, superadmin BYPASSRLS). The committed testcontainers-based integration
-  tests (`tests/integration/test_migrations.py`, `test_tenant_isolation.py`) hit a Docker-Desktop-
-  for-Windows-specific docker-outside-of-docker networking issue when run from inside this session's
-  own validation container — they're expected to run fine in CI (native Linux runner) and were
-  verified equivalently via a manual script against the docker-compose Postgres instead.
+  Verified: up/down/up run clean against a real Postgres; RLS confirmed on tenant tables
+  (`relrowsecurity=t`); `pfa_app`/`pfa_superadmin` roles + grants match doc 02 §3 (see that doc's
+  §3 note — both keep SELECT on `audit_log`, only UPDATE is revoked; an earlier "INSERT only for
+  pfa_app" reading turned out to be self-defeating, caught by an actual test failure).
+  Local note: testcontainers-in-a-container hits a Docker-Desktop-for-Windows networking quirk —
+  fixed by setting `TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal` (and
+  `TESTCONTAINERS_RYUK_DISABLED=true`, since the reaper sidecar hits the same issue) when running
+  `pytest tests/integration` from inside a docker-outside-of-docker validation container on this
+  machine. Not needed in CI (native Linux runner, doc 10 §4).
 - [x] **S1.2 Encryption helpers** (envelope AES-GCM, KMS local provider, HMAC phone hash).
   Done when: DB scan test finds no plaintext phones/transcripts. Verified — see
-  `tests/integration/test_encryption_no_plaintext.py` / the manual run above.
+  `tests/integration/test_encryption_no_plaintext.py`.
 - [ ] **S1.3 Auth**: login, refresh rotation, logout, lockout, MFA TOTP, password reset, CSRF, RBAC
   permission map + route-permission completeness test.
-- [ ] **S1.4 Audit service** with hash chain + nightly verify task.
+- [x] **S1.4 Audit service** with hash chain + nightly verify task.
+  Verified: `tests/unit/test_audit_chain.py` (hash/verify logic, incl. a corrected cross-row
+  linkage check — an earlier version only checked each row's self-consistency, which misses real
+  tampering; see `domain/audit_chain.py`'s docstring), `tests/integration/test_audit_service.py`
+  (sequential + concurrent `record()` calls produce one valid chain — the `pg_advisory_xact_lock`
+  actually serializes writers). Nightly task registered and confirmed in a live `celery` worker's
+  `[tasks]` list (`app.workers.tasks.audit.verify_audit_chain`) — this caught a real bug where
+  `autodiscover_tasks(["app.workers.tasks"])` silently registered nothing (see `celery_app.py`).
 - [ ] **S1.5 Accounts/locations/departments/users APIs** + activation guard (PFA-ACC-003).
 - [ ] **S1.6 Ingestion**: upload endpoint, CSV parser in worker, all row validations/codes, batch
   thresholds, duplicate SHA, template download, SFTP poller (per-account chroot folder).
   Done when: 50k-row synthetic file processed < 2 min; every PFA-ING code covered by a test.
-- [ ] **S1.7 Eligibility engine** (pure) + service + review flow for shared numbers.
-  Done when: rule tests + hypothesis property tests pass; suppression reasons stored.
+- [x] **S1.7 Eligibility engine** (pure) + service; review *resolution* (`resolve_review`) built and
+  tested, but the `POST /visits/{id}/review` HTTP route itself is deferred to S1.5 (needs auth).
+  Done when: rule tests + hypothesis property tests pass; suppression reasons stored. Verified —
+  `tests/unit/test_eligibility.py` (all 11 rules, precedence, idempotence, hypothesis properties),
+  `tests/integration/test_eligibility_service.py` (real-Postgres rule scenarios incl. shared-number
+  review → `resolve_review` → matching audit row, all in doc 07 §6's required same-transaction).
 - [ ] **S1.8 Suppression API** (add/check/remove-manual) + opt-out immutability.
 Exit: upload a synthetic CSV → visits with correct eligibility; audit rows exist.
 

@@ -25,6 +25,12 @@ class Settings(BaseSettings):
     # Alembic connects as the docker-compose superuser, since migrations need DDL + role-creation
     # privileges that `pfa_app` deliberately doesn't have.
     migration_database_url: str = "postgresql+asyncpg://pfa:pfa@postgres:5432/pfa"
+    # For privileged-but-still-application code paths that need to read audit_log (pfa_app is
+    # INSERT-only there, doc 02 §3) — the nightly chain-verify task and, later, super-admin
+    # cross-tenant reads (doc 02 §5). Never used for regular tenant-scoped requests.
+    superadmin_database_url: str = (
+        "postgresql+asyncpg://pfa_superadmin:pfa_superadmin_dev@postgres:5432/pfa"
+    )
     pfa_app_db_password: str = "pfa_app_dev"
     pfa_superadmin_db_password: str = "pfa_superadmin_dev"
     redis_url: str = "redis://redis:6379/0"

@@ -64,6 +64,25 @@ class AuditLogEntry(Base):
     row_hash: Mapped[bytes] = mapped_column(LargeBinary)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
+    def hashed_fields(self) -> dict[str, object]:
+        """Everything `domain.audit_chain.compute_row_hash` hashes — excludes `log_id` (DB-assigned
+        identity, not payload) and `row_hash`/`prev_hash` themselves.
+        """
+        return {
+            "account_id": self.account_id,
+            "actor_type": self.actor_type,
+            "actor_id": self.actor_id,
+            "action": self.action,
+            "entity_type": self.entity_type,
+            "entity_id": self.entity_id,
+            "before_json": self.before_json,
+            "after_json": self.after_json,
+            "ip": self.ip,
+            "user_agent": self.user_agent,
+            "request_id": self.request_id,
+            "created_at": self.created_at,
+        }
+
 
 class DeletionRequest(Base):
     __tablename__ = "deletion_requests"

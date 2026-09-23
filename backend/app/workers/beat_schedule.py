@@ -4,4 +4,12 @@ docs/01_ARCHITECTURE.md §2). Entries are added alongside each owning task start
 
 from __future__ import annotations
 
-BEAT_SCHEDULE: dict[str, dict[str, object]] = {}
+from celery.schedules import crontab
+
+BEAT_SCHEDULE: dict[str, dict[str, object]] = {
+    "verify-audit-chain-nightly": {
+        "task": "app.workers.tasks.audit.verify_audit_chain",
+        # doc 07 §6 "nightly job"; 03:00 UTC chosen arbitrarily as an off-peak hour.
+        "schedule": crontab(hour=3, minute=0),
+    },
+}

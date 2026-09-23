@@ -16,12 +16,17 @@ seed:
 	$(COMPOSE) exec api python -m app.db.seed
 
 # tests/integration needs a Docker socket (testcontainers spins up real Postgres) — mounted
-# ad hoc here since the api service itself doesn't need one. See docs/11_BUILD_PLAN.md's S1.1 note
-# if this hits a docker-outside-of-docker networking quirk on Docker Desktop for Windows/Mac; it
-# runs natively on Linux CI runners.
+# ad hoc here since the api service itself doesn't need one. On Docker Desktop for Windows/Mac this
+# needs TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal (and RYUK disabled, since the reaper
+# sidecar hits the same networking quirk) — see docs/11_BUILD_PLAN.md's S1.1 note. Neither is
+# needed on native Linux CI runners (doc 10 §4), so they're harmless no-ops there.
 test:
 	$(COMPOSE) run --rm api pytest tests/unit
-	$(COMPOSE) run --rm -v /var/run/docker.sock:/var/run/docker.sock api pytest tests/integration
+	$(COMPOSE) run --rm \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		-e TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal \
+		-e TESTCONTAINERS_RYUK_DISABLED=true \
+		api pytest tests/integration
 
 # safety/, e2e/ only hold README stubs until their sprints add real tests (docs/11_BUILD_PLAN.md) —
 # run conditionally so an empty suite isn't a false failure.

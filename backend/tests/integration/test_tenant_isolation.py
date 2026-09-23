@@ -53,10 +53,15 @@ async def test_pfa_app_cannot_see_another_tenants_rows(
 
     await app_session.begin()
     await set_account_scope(app_session, account_a.account_id)
-    visible = (await app_session.scalars(select(Location))).all()
+    # Extract plain values *before* rollback — rollback() expires the session's ORM objects
+    # (regardless of expire_on_commit), so accessing an attribute afterwards triggers an implicit
+    # synchronous reload that fails outside an active greenlet context.
+    visible = [
+        loc.external_location_id for loc in (await app_session.scalars(select(Location))).all()
+    ]
     await app_session.rollback()
 
-    assert [loc.external_location_id for loc in visible] == ["loc-a"]
+    assert visible == ["loc-a"]
 
 
 @pytest.mark.asyncio
