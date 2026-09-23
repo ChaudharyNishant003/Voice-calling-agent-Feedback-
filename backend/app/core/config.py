@@ -19,7 +19,14 @@ class Settings(BaseSettings):
 
     app_env: Literal["local", "ci", "staging", "production"] = "local"
 
-    database_url: str = "postgresql+asyncpg://pfa:pfa@postgres:5432/pfa"
+    # App runtime connects as the restricted `pfa_app` role (created in migration 0011) so
+    # Postgres RLS is actually enforced — the table owner/superuser bypasses RLS by default.
+    database_url: str = "postgresql+asyncpg://pfa_app:pfa_app_dev@postgres:5432/pfa"
+    # Alembic connects as the docker-compose superuser, since migrations need DDL + role-creation
+    # privileges that `pfa_app` deliberately doesn't have.
+    migration_database_url: str = "postgresql+asyncpg://pfa:pfa@postgres:5432/pfa"
+    pfa_app_db_password: str = "pfa_app_dev"
+    pfa_superadmin_db_password: str = "pfa_superadmin_dev"
     redis_url: str = "redis://redis:6379/0"
 
     secret_key_id: str = "dev"

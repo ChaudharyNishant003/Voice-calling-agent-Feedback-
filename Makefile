@@ -15,11 +15,16 @@ migrate:
 seed:
 	$(COMPOSE) exec api python -m app.db.seed
 
-# integration/, safety/, e2e/ only hold README stubs until their sprints add real tests
-# (docs/11_BUILD_PLAN.md) — run conditionally so an empty suite isn't a false failure.
+# tests/integration needs a Docker socket (testcontainers spins up real Postgres) — mounted
+# ad hoc here since the api service itself doesn't need one. See docs/11_BUILD_PLAN.md's S1.1 note
+# if this hits a docker-outside-of-docker networking quirk on Docker Desktop for Windows/Mac; it
+# runs natively on Linux CI runners.
 test:
 	$(COMPOSE) run --rm api pytest tests/unit
-	$(COMPOSE) run --rm api sh -c 'ls tests/integration/test_*.py >/dev/null 2>&1 && pytest tests/integration || echo "no integration tests yet (Sprint 1+)"'
+	$(COMPOSE) run --rm -v /var/run/docker.sock:/var/run/docker.sock api pytest tests/integration
+
+# safety/, e2e/ only hold README stubs until their sprints add real tests (docs/11_BUILD_PLAN.md) —
+# run conditionally so an empty suite isn't a false failure.
 
 test-safety:
 	$(COMPOSE) run --rm api sh -c 'ls tests/safety/test_*.py >/dev/null 2>&1 && pytest tests/safety || echo "no safety tests yet (Sprint 3-4)"'

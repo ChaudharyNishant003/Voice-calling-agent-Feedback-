@@ -27,6 +27,7 @@ dependencies = [
     "uuid6>=2024.7.10",
     "httpx>=0.27",
     "pyyaml>=6.0",
+    "cryptography>=43.0",
 ]
 
 [project.optional-dependencies]
@@ -68,7 +69,7 @@ plugins = ["pydantic.mypy"]
 exclude = ["alembic/versions"]
 
 [[tool.mypy.overrides]]
-module = ["phonenumbers.*", "pybreaker.*", "uuid6.*", "celery.*", "kombu.*"]
+module = ["phonenumbers.*", "pybreaker.*", "uuid6.*", "celery.*", "kombu.*", "testcontainers.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

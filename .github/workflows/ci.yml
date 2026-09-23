@@ -51,14 +51,10 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
-      # Empty until Sprint 1 (docs/11_BUILD_PLAN.md S1.1+) — testcontainers spin up Postgres/Redis
-      # once app.db models exist for real integration coverage.
-      - run: |
-          if ls tests/integration/test_*.py >/dev/null 2>&1; then
-            pytest tests/integration
-          else
-            echo "no integration tests yet (Sprint 1+)"
-          fi
+      # testcontainers spins up real Postgres containers directly on the runner (Docker is
+      # preinstalled on ubuntu-latest) — no docker-outside-of-docker needed here, unlike local dev
+      # in a container (see docs/11_BUILD_PLAN.md's S1.1 note and the Makefile's `test` target).
+      - run: pytest tests/integration
 
   safety-rules:
     needs: unit
@@ -123,7 +119,29 @@ jobs:
   migrations:
     needs: unit
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: pfa
+          POSTGRES_PASSWORD: pfa
+          POSTGRES_DB: pfa
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U pfa"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      MIGRATION_DATABASE_URL: postgresql+asyncpg://pfa:pfa@localhost:5432/pfa
     steps:
       - uses: actions/checkout@v4
-      # Empty until Sprint 1 (docs/11_BUILD_PLAN.md S1.1) — no migrations exist yet.
-      - run: echo "no migrations yet (Sprint 1+)"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      # docs/02_DATA_MODEL.md §6 — every migration needs a working downgrade().
+      - run: |
+          alembic upgrade head
+          alembic downgrade base
+          alembic upgrade head
