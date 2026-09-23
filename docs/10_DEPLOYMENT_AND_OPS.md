@@ -58,7 +58,7 @@ SMTP_URL=smtp://mailpit:1025
 TEST_ALLOWLIST_E164=          # comma list; REQUIRED outside production
 PLATFORM_MAX_CONCURRENT_CALLS=50
 DND_STRICT=true
-PUBLIC_BASE_URL=http://localhost:8000
+PUBLIC_BASE_URL=http://localhost:8010
 DASHBOARD_BASE_URL=http://localhost:3000
 SENTRY_DSN=
 ```

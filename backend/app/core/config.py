@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     platform_max_concurrent_calls: int = 50
     dnd_strict: bool = True
 
-    public_base_url: str = "http://localhost:8000"
+    public_base_url: str = "http://localhost:8010"
     dashboard_base_url: str = "http://localhost:3000"
 
     sentry_dsn: str = ""

@@ -36,7 +36,9 @@ services:
       dockerfile: infra/docker/api.Dockerfile
     env_file: ../.env
     ports:
-      - "8000:8000"
+      # Host 8010 (not 8000) to avoid clashing with unrelated local services; the container
+      # itself still listens on 8000, matching PUBLIC_BASE_URL.
+      - "8010:8000"
     depends_on:
       postgres:
         condition: service_healthy

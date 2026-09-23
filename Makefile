@@ -4,7 +4,7 @@ COMPOSE = docker compose -f infra/docker-compose.yml
 
 up:
 	$(COMPOSE) up --build -d
-	@echo "dashboard: http://localhost:3000   api: http://localhost:8000/api/v1/health/ready   mailpit: http://localhost:8025"
+	@echo "dashboard: http://localhost:3000   api: http://localhost:8010/api/v1/health/ready   mailpit: http://localhost:8025"
 
 down:
 	$(COMPOSE) down
