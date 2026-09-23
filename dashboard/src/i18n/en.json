@@ -1,0 +1,23 @@
+{
+  "app": {
+    "name": "Patient Feedback Agent"
+  },
+  "auth": {
+    "login": {
+      "title": "Sign in",
+      "description": "Sign in to your Patient Feedback Agent account.",
+      "emailLabel": "Email",
+      "passwordLabel": "Password",
+      "submit": "Sign in"
+    }
+  },
+  "err": {
+    "PFA-AUTH-001": "Email or password is incorrect.",
+    "PFA-AUTH-002": "Your session has expired. Please sign in again.",
+    "PFA-AUTH-003": "Too many attempts. Try again in 15 minutes.",
+    "PFA-AUTH-004": "That code didn't work. Check your authenticator app and try again.",
+    "PFA-AUTH-005": "Your session needs refreshing. Please reload the page.",
+    "PFA-AUTH-006": "This link has expired. Request a new one.",
+    "PFA-AUTH-007": "Use at least 12 characters. Avoid common passwords."
+  }
+}

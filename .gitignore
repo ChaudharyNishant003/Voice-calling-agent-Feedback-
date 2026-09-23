@@ -1,0 +1,53 @@
+# Environment
+.env
+.env.*
+!.env.example
+dev-keys/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+*.cover
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+.eslintcache
+
+# Docker
+*.pid
+
+# Claude Code harness-internal state (not project config)
+.claude/*.lock
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Secrets / keys
+*.pem
+*.key
+!dev-keys/*.example
+
+# Logs
+*.log
+logs/
+
+# Generated
+backend/openapi.json

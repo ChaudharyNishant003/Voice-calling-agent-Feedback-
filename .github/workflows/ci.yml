@@ -1,0 +1,129 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+defaults:
+  run:
+    working-directory: backend
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: ruff check app tests
+      - run: mypy app
+      - run: lint-imports
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - working-directory: dashboard
+        run: npm ci
+      - working-directory: dashboard
+        run: npm run lint
+      - working-directory: dashboard
+        run: npm run typecheck
+
+  unit:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: pytest tests/unit --cov=app --cov-report=term-missing
+
+  integration:
+    needs: unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      # Empty until Sprint 1 (docs/11_BUILD_PLAN.md S1.1+) — testcontainers spin up Postgres/Redis
+      # once app.db models exist for real integration coverage.
+      - run: |
+          if ls tests/integration/test_*.py >/dev/null 2>&1; then
+            pytest tests/integration
+          else
+            echo "no integration tests yet (Sprint 1+)"
+          fi
+
+  safety-rules:
+    needs: unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      # Empty until Sprint 3-4 (docs/11_BUILD_PLAN.md S3.6, S4.7) — deterministic safety detector.
+      - run: |
+          if ls tests/safety/test_*.py >/dev/null 2>&1; then
+            pytest tests/safety
+          else
+            echo "no safety tests yet (Sprint 3-4)"
+          fi
+
+  e2e-sim:
+    needs: unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      # Empty until Sprint 3 (docs/11_BUILD_PLAN.md S3.9) — text-mode call simulator.
+      - run: |
+          if ls tests/e2e/test_*.py >/dev/null 2>&1; then
+            pytest tests/e2e
+          else
+            echo "no e2e sim tests yet (Sprint 3+)"
+          fi
+
+  playwright:
+    needs: unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # Empty until Sprint 6 (docs/11_BUILD_PLAN.md S6.7) — dashboard screens don't exist yet.
+      - working-directory: dashboard
+        run: echo "no Playwright flows yet (Sprint 6)"
+
+  security-scans:
+    needs: unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install bandit pip-audit
+      - run: bandit -r app -ll
+      - run: pip-audit || true  # advisory until dependency set stabilises past Sprint 0
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+
+  migrations:
+    needs: unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Empty until Sprint 1 (docs/11_BUILD_PLAN.md S1.1) — no migrations exist yet.
+      - run: echo "no migrations yet (Sprint 1+)"
