@@ -1,6 +1,7 @@
 """All ORM models, imported here so `Base.metadata` is fully populated for Alembic."""
 
 from app.db.base import Base
+from app.db.models.auth import RefreshToken
 from app.db.models.calls import Call, CallEvent, SurveyResponse, Transcript
 from app.db.models.cases import Case, CaseEvent, Complaint
 from app.db.models.compliance import (
@@ -35,6 +36,7 @@ __all__ = [
     "Location",
     "Patient",
     "PendingSafetyCase",
+    "RefreshToken",
     "SuppressionEntry",
     "SurveyResponse",
     "SurveyVersion",

@@ -43,6 +43,20 @@ the dashboard login stub renders. GitHub Actions CI itself has not run yet (no r
   `tests/integration/test_encryption_no_plaintext.py`.
 - [ ] **S1.3 Auth**: login, refresh rotation, logout, lockout, MFA TOTP, password reset, CSRF, RBAC
   permission map + route-permission completeness test.
+  **Partial — increment 3a done, 3b open.** Built: password hashing (argon2id) + strength policy,
+  JWT access/refresh sessions with rotation + reuse detection, lockout (5 attempts / 15 min), RBAC
+  permission map + route-completeness test, CSRF (double-submit cookie), `refresh_tokens` table
+  (migration 0012, Open Question #23 — not in doc 02's DDL). Verified against real Postgres
+  (`tests/integration/test_auth_service.py`, `test_auth_api.py`) and manually through the running
+  `docker compose` stack (`login` -> `/me` -> `refresh` -> `logout`). That manual pass caught a real
+  bug unit/integration tests missed: the refresh cookie was named `__Host-pfa_refresh` but scoped to
+  `Path=/api/v1/auth` — the `__Host-` prefix *requires* `Path=/` exactly, so real clients (curl,
+  every major browser) silently refuse to store it at all, which would have made `/auth/refresh`
+  permanently broken in any real browser despite every automated test passing (httpx's cookie jar
+  doesn't enforce the `__Host-` prefix rule). Fixed by moving both `__Host-` cookies to `Path=/`; a
+  regression test now asserts `Path=/`+`Secure` on any `__Host-`-prefixed Set-Cookie header
+  (`test_login_sets_all_three_cookies`). Still open for 3b: MFA TOTP + recovery codes (doc 07 §2
+  requires MFA for admin/super_admin — not enforced yet), `/auth/password/forgot`/`reset`.
 - [x] **S1.4 Audit service** with hash chain + nightly verify task.
   Verified: `tests/unit/test_audit_chain.py` (hash/verify logic, incl. a corrected cross-row
   linkage check — an earlier version only checked each row's self-consistency, which misses real

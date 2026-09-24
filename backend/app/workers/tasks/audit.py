@@ -9,10 +9,9 @@ from __future__ import annotations
 import asyncio
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.core.config import get_settings
 from app.core.logging import get_logger
+from app.db.base import get_superadmin_sessionmaker
 from app.db.models.compliance import AuditLogEntry
 from app.domain.audit_chain import verify_chain
 from app.workers.celery_app import celery_app
@@ -23,19 +22,16 @@ logger = get_logger()
 async def _verify_audit_chain_async() -> list[int]:
     """Returns the `log_id`s of any broken rows (empty = chain intact).
 
-    Connects as `pfa_superadmin` (BYPASSRLS), not the regular app engine — this job verifies the
-    *entire* table across every tenant, and `pfa_app`'s RLS policy on `audit_log` only matches rows
-    where `account_id` equals the current session's scope (or is NULL, for platform-wide entries).
-    Without a specific tenant scope set, `pfa_app` would only ever see the NULL-account_id rows.
+    Connects as `pfa_superadmin` (BYPASSRLS, `db.base.get_superadmin_sessionmaker`), not the
+    regular app engine — this job verifies the *entire* table across every tenant, and `pfa_app`'s
+    RLS policy on `audit_log` only matches rows where `account_id` equals the current session's
+    scope (or is NULL, for platform-wide entries). Without a specific tenant scope set, `pfa_app`
+    would only ever see the NULL-account_id rows.
     """
-    engine = create_async_engine(get_settings().superadmin_database_url)
-    try:
-        async with async_sessionmaker(engine, expire_on_commit=False)() as session:
-            rows = list(
-                (await session.scalars(select(AuditLogEntry).order_by(AuditLogEntry.log_id))).all()
-            )
-    finally:
-        await engine.dispose()
+    async with get_superadmin_sessionmaker()() as session:
+        rows = list(
+            (await session.scalars(select(AuditLogEntry).order_by(AuditLogEntry.log_id))).all()
+        )
 
     breaks = verify_chain(rows)
 

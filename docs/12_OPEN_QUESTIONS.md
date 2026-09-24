@@ -27,6 +27,7 @@ in the PR. Add new questions at the bottom with the next number.
 | 20 | Human callback staffing: who calls patients who asked for a human? | Pilot account | Yes for pilot | Creates P3 case to default owner |
 | 21 | Doc 07 §3 says phone/transcript encryption uses a "per-account DEK wrapped by KMS KEK," implying a stored wrapped DEK, but doc 02's DDL has no table for it. Confirm the schema addition. | Engineering | No for build | Add `account_encryption_keys(account_id, wrapped_dek, kek_id, created_at, rotated_at)` in migration 0008; built in S1.1/S1.2 |
 | 22 | `suppression_reason` enum (doc 02 §1) has `consent_declined_visit` and `missing_required_field`, but doc 03 §1's 11-rule eligibility table doesn't assign either a rule. Are these meant to be set elsewhere (e.g. ingestion-time), or is the rule table missing a step? | Product | Yes for S1.7 | `domain/eligibility.py` implements exactly the 11 documented rules; these two enum values stay unused until answered |
+| 23 | Doc 04 §1 / doc 07 §2 describe refresh tokens as "opaque, hashed in DB, with rotation and reuse detection," but doc 02's DDL has no table for it. Confirm the schema addition. | Engineering | No for build | Add `refresh_tokens(token_id, user_id, family_id, token_hash, created_at, expires_at, revoked_at, replaced_by)` in migration 0012; built in S1.3 |
 
 ## Evidence quality reminder
 Market sizes, pricing, cost bands and vendor latency/language claims are planning ranges or vendor

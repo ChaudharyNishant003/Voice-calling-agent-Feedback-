@@ -43,3 +43,23 @@ def get_sessionmaker() -> async_sessionmaker[AsyncSession]:
 async def get_session() -> AsyncIterator[AsyncSession]:
     async with get_sessionmaker()() as session:
         yield session
+
+
+# `pfa_superadmin` (BYPASSRLS) — for the handful of operations that are structurally incapable of
+# going through a tenant-scoped session: resolving a user's identity before their account_id is
+# known (auth_service.login/refresh), a super_admin's own identity (no account_id to scope by),
+# account provisioning, and whole-table reads like the nightly audit-chain verify. Never used for
+# regular tenant-scoped request handling once identity is established.
+@lru_cache
+def get_superadmin_engine() -> AsyncEngine:
+    return create_async_engine(get_settings().superadmin_database_url, pool_pre_ping=True)
+
+
+@lru_cache
+def get_superadmin_sessionmaker() -> async_sessionmaker[AsyncSession]:
+    return async_sessionmaker(get_superadmin_engine(), expire_on_commit=False)
+
+
+async def get_superadmin_session() -> AsyncIterator[AsyncSession]:
+    async with get_superadmin_sessionmaker()() as session:
+        yield session

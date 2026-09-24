@@ -21,6 +21,25 @@ from app.core.config import get_settings
 _BACKEND_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _isolated_jwt_keys(tmp_path_factory: pytest.TempPathFactory) -> Iterator[None]:
+    """`jwt_private_key_path` defaults to a relative path (`./dev-keys/jwt_ed25519`), and
+    `core.security.get_jwt_keys()` is `@lru_cache`d — without this, whichever auth test runs first
+    in the session would generate a real keypair file into the backend working directory instead of
+    a throwaway one, and every other test would be stuck reusing wherever that landed.
+    """
+    key_path = tmp_path_factory.mktemp("jwt-keys") / "jwt_ed25519"
+    old_value = os.environ.get("JWT_PRIVATE_KEY_PATH")
+    os.environ["JWT_PRIVATE_KEY_PATH"] = str(key_path)
+    get_settings.cache_clear()
+    yield
+    if old_value is None:
+        os.environ.pop("JWT_PRIVATE_KEY_PATH", None)
+    else:
+        os.environ["JWT_PRIVATE_KEY_PATH"] = old_value
+    get_settings.cache_clear()
+
+
 @pytest.fixture(scope="session")
 def postgres_container() -> Iterator[PostgresContainer]:
     with PostgresContainer(

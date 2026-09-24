@@ -6,6 +6,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1
 
 COPY backend/pyproject.toml ./pyproject.toml
+COPY backend/alembic.ini ./alembic.ini
 COPY backend/app ./app
 
 RUN pip install --no-cache-dir -e ".[dev]"
