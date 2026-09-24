@@ -96,6 +96,7 @@ Columns: code · HTTP · log level · meaning · user message (UI key `err.<code
 | PFA-ING-004 | 422 | info | Encoding | "Save the file as CSV UTF-8 and upload again." |
 | PFA-ING-005 | 413 | info | Too large | "Files can be up to 20 MB and 50,000 rows. Split the file and try again." |
 | PFA-ING-006 | 409 | info | Duplicate file | "This file was already uploaded on {date}." |
+| PFA-ING-007 | 404 | info | Batch not found (incl. cross-tenant, per doc 04 §1) | "That upload wasn't found." |
 | PFA-ING-010 | row | — | Bad patient ID | "Row {n}: patient ID is missing or has invalid characters." |
 | PFA-ING-011 | row | — | Bad phone | "Row {n}: phone number is not a valid Indian number." (never echo the number) |
 | PFA-ING-012 | row | — | Bad date | "Row {n}: visit date must be a real past date ({format})." |

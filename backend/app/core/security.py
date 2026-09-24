@@ -59,6 +59,15 @@ def load_kek_from_base64(value: str) -> bytes:
     return kek
 
 
+@lru_cache
+def get_local_kek() -> bytes:
+    """Cached `settings.local_kek_base64`, decoded once per process — the read path every caller of
+    `db.repositories.encryption_keys.get_or_create_dek` needs (`KMS_PROVIDER=local` only; AWS/GCP
+    KMS is a later deployment-sprint concern, doc 10).
+    """
+    return load_kek_from_base64(get_settings().local_kek_base64)
+
+
 def _aead_encrypt(plaintext: bytes, key: bytes) -> bytes:
     nonce = os.urandom(_NONCE_LEN)
     ciphertext = AESGCM(key).encrypt(nonce, plaintext, associated_data=None)

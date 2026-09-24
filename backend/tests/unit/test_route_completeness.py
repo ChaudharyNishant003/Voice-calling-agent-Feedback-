@@ -28,6 +28,7 @@ _PUBLIC_OR_SELF_SERVICE_PATHS = {
     "/api/v1/auth/refresh",
     "/api/v1/auth/logout",
     "/api/v1/me",
+    "/api/v1/ingestion/template.csv",
 }
 
 

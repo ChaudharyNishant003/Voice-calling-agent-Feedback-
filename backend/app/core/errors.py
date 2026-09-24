@@ -40,6 +40,10 @@ class ValidationError(PFAError):
     http_status = 422
 
 
+class PayloadTooLargeError(PFAError):
+    http_status = 413
+
+
 class AuthError(PFAError):
     http_status = 401
 

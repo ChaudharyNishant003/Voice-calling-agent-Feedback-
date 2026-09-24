@@ -5,7 +5,14 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import BigInteger, CheckConstraint, ForeignKey, Integer, UniqueConstraint
+from sqlalchemy import (
+    BigInteger,
+    CheckConstraint,
+    ForeignKey,
+    Integer,
+    LargeBinary,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -25,6 +32,9 @@ class IngestionBatch(Base):
     source: Mapped[str]
     filename: Mapped[str]
     sha256: Mapped[str]
+    # Open Question #25 (docs/12_OPEN_QUESTIONS.md) — Sprint-1 stopgap until the S3 storage adapter
+    # (adapters/storage/s3.py, deferred to Sprint 3) exists.
+    content: Mapped[bytes | None] = mapped_column(LargeBinary)
     status: Mapped[IngestionStatus] = mapped_column(
         pg_enum(IngestionStatus, "ingestion_status"), default=IngestionStatus.received
     )

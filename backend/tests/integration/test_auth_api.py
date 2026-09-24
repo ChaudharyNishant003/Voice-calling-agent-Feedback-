@@ -10,7 +10,6 @@ affects cookie-jar bookkeeping, not connectivity.
 
 from __future__ import annotations
 
-import os
 from collections.abc import AsyncIterator
 
 import pytest
@@ -19,7 +18,7 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import get_settings
+from app.core.ids import format_id
 from app.core.security import hash_password
 from app.db.models.tenancy import Account, User
 from app.domain.enums import UserRole
@@ -42,41 +41,11 @@ def _account() -> Account:
 
 
 @pytest_asyncio.fixture
-async def configured_app(migrated_database: dict[str, str]) -> AsyncIterator[FastAPI]:
-    """Points the app's (lru_cache'd) engines at the testcontainers Postgres for this test, then
-    disposes and clears them — `app_session`/`superadmin_session` avoid this by building a fresh
-    engine per test, but the real app's `db.base` getters are process-wide singletons, and
-    pytest-asyncio hands each test function its own event loop, so a stale cached engine from a
-    prior test's (now-closed) loop would break asyncpg on first use here.
-    """
-    from app.db import base as db_base
-
-    old_env = {k: os.environ.get(k) for k in ("DATABASE_URL", "SUPERADMIN_DATABASE_URL")}
-    os.environ["DATABASE_URL"] = migrated_database["app"]
-    os.environ["SUPERADMIN_DATABASE_URL"] = migrated_database["superadmin"]
-    get_settings.cache_clear()
-    db_base.get_engine.cache_clear()
-    db_base.get_sessionmaker.cache_clear()
-    db_base.get_superadmin_engine.cache_clear()
-    db_base.get_superadmin_sessionmaker.cache_clear()
-
+async def configured_app(configured_db_env: None) -> AsyncIterator[FastAPI]:
+    del configured_db_env
     from app.main import app as fastapi_app
 
     yield fastapi_app
-
-    await db_base.get_engine().dispose()
-    await db_base.get_superadmin_engine().dispose()
-    db_base.get_engine.cache_clear()
-    db_base.get_sessionmaker.cache_clear()
-    db_base.get_superadmin_engine.cache_clear()
-    db_base.get_superadmin_sessionmaker.cache_clear()
-
-    for key, value in old_env.items():
-        if value is None:
-            os.environ.pop(key, None)
-        else:
-            os.environ[key] = value
-    get_settings.cache_clear()
 
 
 @pytest_asyncio.fixture
@@ -113,7 +82,7 @@ async def test_login_sets_all_three_cookies(client: AsyncClient, seeded_user: Us
     )
     assert response.status_code == 200
     body = response.json()
-    assert body["user_id"] == str(seeded_user.user_id)
+    assert body["user_id"] == format_id("user", seeded_user.user_id)
     assert body["role"] == "quality"
 
     set_cookie_headers = response.headers.get_list("set-cookie")
@@ -144,7 +113,7 @@ async def test_me_works_with_session_cookie(client: AsyncClient, seeded_user: Us
     response = await client.get("/api/v1/me")
     assert response.status_code == 200
     body = response.json()
-    assert body["user_id"] == str(seeded_user.user_id)
+    assert body["user_id"] == format_id("user", seeded_user.user_id)
     assert body["email"] == seeded_user.email
     assert "view_verbatim_transcript" in body["permissions"]
 

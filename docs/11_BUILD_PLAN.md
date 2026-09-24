@@ -55,8 +55,11 @@ the dashboard login stub renders. GitHub Actions CI itself has not run yet (no r
   permanently broken in any real browser despite every automated test passing (httpx's cookie jar
   doesn't enforce the `__Host-` prefix rule). Fixed by moving both `__Host-` cookies to `Path=/`; a
   regression test now asserts `Path=/`+`Secure` on any `__Host-`-prefixed Set-Cookie header
-  (`test_login_sets_all_three_cookies`). Still open for 3b: MFA TOTP + recovery codes (doc 07 §2
-  requires MFA for admin/super_admin — not enforced yet), `/auth/password/forgot`/`reset`.
+  (`test_login_sets_all_three_cookies`). That same manual pass also found `infra/docker/
+  api.Dockerfile` never copied `alembic.ini` into the image, so `make migrate` could never actually
+  run against the compose Postgres — fixed by adding the `COPY`. Still open for 3b: MFA TOTP +
+  recovery codes (doc 07 §2 requires MFA for admin/super_admin — not enforced yet),
+  `/auth/password/forgot`/`reset`.
 - [x] **S1.4 Audit service** with hash chain + nightly verify task.
   Verified: `tests/unit/test_audit_chain.py` (hash/verify logic, incl. a corrected cross-row
   linkage check — an earlier version only checked each row's self-consistency, which misses real
@@ -69,6 +72,50 @@ the dashboard login stub renders. GitHub Actions CI itself has not run yet (no r
 - [ ] **S1.6 Ingestion**: upload endpoint, CSV parser in worker, all row validations/codes, batch
   thresholds, duplicate SHA, template download, SFTP poller (per-account chroot folder).
   Done when: 50k-row synthetic file processed < 2 min; every PFA-ING code covered by a test.
+  **Partial — core pipeline done, SFTP open.** Built: `POST /ingestion/uploads` (multipart,
+  `require(Permission.upload_lists)`), batch list/get/errors endpoints, `GET /ingestion/
+  template.csv`; `services/ingestion_service.py` (sync pre-checks — extension, size, encoding,
+  header columns, duplicate SHA — all before the Celery job is even enqueued, so bad files fail
+  fast instead of going through "received" then "failed"); `domain/ingestion_csv.py` (pure
+  per-row validators, every `PFA-ING-01x` code); `workers/tasks/ingestion.py` (parses, creates
+  `Patient`/`Visit`, auto-creates unmapped departments, applies the configurable `PFA-ING-003`
+  threshold via a savepoint so a rejected batch leaves no `Patient`/`Visit` rows behind while still
+  keeping the row errors that explain why, then runs the already-built `eligibility_service` on
+  every created visit — this is the actual Sprint-1-exit-criterion line). Verified against real
+  Postgres (`tests/integration/test_ingestion_service.py`, `test_ingestion_api.py`) and a 50k-row
+  wall-clock check (`test_ingestion_perf.py`, opt-in via `-m slow`, doc 08 §6). Still open: SFTP
+  poller (`GET /ingestion/sftp`, `POST /ingestion/sftp/keys`, beat schedule) — not required by
+  this item's "Done when", deferred as its own chunk of work.
+
+  Gaps found and filled while building this (each logged in `docs/12_OPEN_QUESTIONS.md`, not
+  guessed silently): doc 04 §4's two "configurable"/"account setting" ingestion knobs
+  (`PFA-ING-003` threshold, visit-date format) had no columns anywhere — added
+  `accounts.ingest_error_threshold_pct`/`ingest_date_format` (migration 0013, Open Question #24).
+  The worker needs the raw uploaded bytes, but the S3 storage adapter is a deliberate stub deferred
+  to Sprint 3 — added `ingestion_batches.content bytea` as a Sprint-1 stopgap with no retention/
+  purge job yet (migration 0014, Open Question #25). No error code existed for "batch not found"
+  (including cross-tenant, per doc 04 §1) — added `PFA-ING-007` to doc 06. Also fixed a
+  pre-existing gap this increment was the first to actually exercise: `LOCAL_KEK_BASE64` in
+  `.env`/`.env.example` was a placeholder that isn't valid base64 (`load_kek_from_base64` would
+  have raised on first real use — nothing before ingestion ever read it outside a test's own ad hoc
+  KEK).
+
+  Manual verification against the real `docker compose` stack (seeded account, real login, real
+  multipart upload, real Celery worker) caught a second real bug the automated suite couldn't have:
+  a worker process crashed processing its *second* task, not its first. `db.base`'s engines are
+  `@lru_cache`d at process scope, but each Celery task ran its body via a fresh `asyncio.run()`,
+  which tears down its event loop when the task finishes — and an asyncpg connection pool is bound
+  to the loop it was created on. Task 1 built the engine against loop A; when loop A closed, task 2
+  got a new loop B but `get_engine()` still handed back the loop-A-bound engine, and asyncpg raised
+  `Future ... attached to a different loop`. This also affected the pre-existing `S1.4` audit task,
+  not just this one — a real `celery worker` processing more than one `verify_audit_chain`/
+  `process_ingestion_batch` run in its lifetime would eventually have crashed. Fixed with a shared
+  `workers/task_utils.run_worker_task()` that disposes and clears the cached engines *inside the
+  same event loop* the task ran in (disposing from a *later* `asyncio.run()` call fails too —
+  `Event loop is closed` — since asyncpg can't gracefully close a connection from a different loop
+  than the one it was opened on; also confirmed by hand). Verified by uploading three sequential
+  batches (including one that exceeds the threshold) through the real running stack and confirming
+  the same worker fork processes all three without crashing.
 - [x] **S1.7 Eligibility engine** (pure) + service; review *resolution* (`resolve_review`) built and
   tested, but the `POST /visits/{id}/review` HTTP route itself is deferred to S1.5 (needs auth).
   Done when: rule tests + hypothesis property tests pass; suppression reasons stored. Verified —

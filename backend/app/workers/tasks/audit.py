@@ -6,8 +6,6 @@ rule to pick up in the meantime.
 
 from __future__ import annotations
 
-import asyncio
-
 from sqlalchemy import select
 
 from app.core.logging import get_logger
@@ -15,6 +13,7 @@ from app.db.base import get_superadmin_sessionmaker
 from app.db.models.compliance import AuditLogEntry
 from app.domain.audit_chain import verify_chain
 from app.workers.celery_app import celery_app
+from app.workers.task_utils import run_worker_task
 
 logger = get_logger()
 
@@ -46,4 +45,4 @@ async def _verify_audit_chain_async() -> list[int]:
 
 @celery_app.task(name="app.workers.tasks.audit.verify_audit_chain")  # type: ignore[untyped-decorator]
 def verify_audit_chain() -> list[int]:
-    return asyncio.run(_verify_audit_chain_async())
+    return run_worker_task(_verify_audit_chain_async())

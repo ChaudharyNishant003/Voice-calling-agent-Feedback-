@@ -6,6 +6,8 @@ Prefixes: acc_ (account), loc_ (location), pat_ (patient), vis_ (visit), call_ (
 
 from __future__ import annotations
 
+from uuid import UUID
+
 import uuid6
 
 PREFIXES = {
@@ -18,6 +20,8 @@ PREFIXES = {
     "case": "case",
     "user": "usr",
     "req": "req",
+    "department": "dept",
+    "ingestion_batch": "batch",
 }
 
 
@@ -33,6 +37,16 @@ def new_id(entity: str) -> str:
     """
     prefix = PREFIXES.get(entity, entity)
     return f"{prefix}_{uuid7().hex}"
+
+
+def format_id(entity: str, value: UUID) -> str:
+    """Format an existing row id (e.g. `user.user_id` from the DB) the same way `new_id` generates
+    one, e.g. format_id("user", user.user_id) -> "usr_018f2c3a...". Doc 04 §1 / CLAUDE.md §8 require
+    every id in API output to be prefixed this way; `new_id` alone only covers freshly generated
+    ids.
+    """
+    prefix = PREFIXES.get(entity, entity)
+    return f"{prefix}_{value.hex}"
 
 
 def parse_id(value: str) -> tuple[str, str]:

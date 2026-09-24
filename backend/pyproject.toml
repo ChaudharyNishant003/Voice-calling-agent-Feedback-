@@ -31,6 +31,7 @@ dependencies = [
     "pyjwt[crypto]>=2.9",
     "argon2-cffi>=23.1",
     "zxcvbn>=4.4.28",
+    "python-multipart>=0.0.12",
 ]
 
 [project.optional-dependencies]
@@ -88,6 +89,10 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# `slow` (e.g. the 50k-row ingestion perf check, doc 08 §6) is excluded by default — run it
+# explicitly with `pytest tests/integration -o addopts="" -m slow`.
+addopts = "-m 'not slow'"
+markers = ["slow: not run by default; opt in with -o addopts=\"\" -m slow"]
 
 [tool.coverage.run]
 source = ["app"]

@@ -6,6 +6,7 @@ transaction via `db_session`/`db_session_as` so tests don't leak state into each
 
 from __future__ import annotations
 
+import base64
 import os
 from collections.abc import AsyncIterator, Iterator
 
@@ -37,6 +38,44 @@ def _isolated_jwt_keys(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Non
         os.environ.pop("JWT_PRIVATE_KEY_PATH", None)
     else:
         os.environ["JWT_PRIVATE_KEY_PATH"] = old_value
+    get_settings.cache_clear()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _isolated_local_kek() -> Iterator[None]:
+    """`local_kek_base64` defaults to `""` (`core/config.py`), and this container doesn't read the
+    project's `.env` (its cwd is `/srv`, bind-mounted from `backend/`, not the repo root where
+    `.env` lives) — so without this, `core.security.get_local_kek()` (`@lru_cache`d, like
+    `get_jwt_keys`) would decode an empty string and raise on first use. Ingestion is the first
+    feature that reaches it through the settings-based path rather than a test-local KEK.
+    """
+    kek_base64 = base64.b64encode(os.urandom(32)).decode()
+    old_value = os.environ.get("LOCAL_KEK_BASE64")
+    os.environ["LOCAL_KEK_BASE64"] = kek_base64
+    get_settings.cache_clear()
+    yield
+    if old_value is None:
+        os.environ.pop("LOCAL_KEK_BASE64", None)
+    else:
+        os.environ["LOCAL_KEK_BASE64"] = old_value
+    get_settings.cache_clear()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _isolated_phone_hash_pepper() -> Iterator[None]:
+    """`phone_hash_pepper` defaults to `""` (`core/config.py`) and this container doesn't read the
+    project's `.env` (see `_isolated_local_kek` above) — `core.phone.phone_hash` refuses to run with
+    an empty pepper, so ingestion (the first feature to hash a phone number through the
+    settings-based path rather than a test-local pepper) would fail on every row without this.
+    """
+    old_value = os.environ.get("PHONE_HASH_PEPPER")
+    os.environ["PHONE_HASH_PEPPER"] = "test-pepper-not-for-prod"
+    get_settings.cache_clear()
+    yield
+    if old_value is None:
+        os.environ.pop("PHONE_HASH_PEPPER", None)
+    else:
+        os.environ["PHONE_HASH_PEPPER"] = old_value
     get_settings.cache_clear()
 
 
@@ -104,3 +143,44 @@ async def app_session(migrated_database: dict[str, str]) -> AsyncIterator[AsyncS
 async def superadmin_session(migrated_database: dict[str, str]) -> AsyncIterator[AsyncSession]:
     async for session in _session_for(migrated_database["superadmin"]):
         yield session
+
+
+@pytest_asyncio.fixture
+async def configured_db_env(migrated_database: dict[str, str]) -> AsyncIterator[None]:
+    """Points `db.base`'s (`@lru_cache`d) engines at the testcontainers Postgres for this test, then
+    disposes and clears them. For any code path that opens its own session internally — via
+    `db.base.get_session`/`get_superadmin_session` — rather than taking one as a parameter (the real
+    app's FastAPI dependencies; `workers/tasks/*`'s Celery task bodies). `app_session`/
+    `superadmin_session` don't need this: they build a fresh engine per test directly against
+    `migrated_database`'s URLs, bypassing `db.base` entirely.
+
+    Function-scoped, not session-scoped: pytest-asyncio gives each test its own event loop by
+    default, and an engine created in one loop can't be reused from another, so the cached engine is
+    disposed and cleared after every test rather than left for the next one.
+    """
+    from app.db import base as db_base
+
+    old_env = {k: os.environ.get(k) for k in ("DATABASE_URL", "SUPERADMIN_DATABASE_URL")}
+    os.environ["DATABASE_URL"] = migrated_database["app"]
+    os.environ["SUPERADMIN_DATABASE_URL"] = migrated_database["superadmin"]
+    get_settings.cache_clear()
+    db_base.get_engine.cache_clear()
+    db_base.get_sessionmaker.cache_clear()
+    db_base.get_superadmin_engine.cache_clear()
+    db_base.get_superadmin_sessionmaker.cache_clear()
+
+    yield
+
+    await db_base.get_engine().dispose()
+    await db_base.get_superadmin_engine().dispose()
+    db_base.get_engine.cache_clear()
+    db_base.get_sessionmaker.cache_clear()
+    db_base.get_superadmin_engine.cache_clear()
+    db_base.get_superadmin_sessionmaker.cache_clear()
+
+    for key, value in old_env.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
+    get_settings.cache_clear()

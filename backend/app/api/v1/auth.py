@@ -19,6 +19,7 @@ from app.api.deps import (
     verify_csrf,
 )
 from app.core.errors import AuthError
+from app.core.ids import format_id
 from app.core.security import ACCESS_TOKEN_TTL_S
 from app.services import auth_service
 from app.services.auth_service import LoginResult
@@ -41,9 +42,9 @@ class LoginResponse(BaseModel):
 
 def _login_response(result: LoginResult) -> LoginResponse:
     return LoginResponse(
-        user_id=str(result.user.user_id),
+        user_id=format_id("user", result.user.user_id),
         role=result.user.role.value,
-        account_id=str(result.user.account_id) if result.user.account_id else None,
+        account_id=format_id("account", result.user.account_id) if result.user.account_id else None,
     )
 
 

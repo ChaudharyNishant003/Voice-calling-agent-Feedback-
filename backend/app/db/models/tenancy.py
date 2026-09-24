@@ -44,6 +44,8 @@ class Account(Base):
     frequency_cap_days: Mapped[int] = mapped_column(default=30)
     frequency_cap_count: Mapped[int] = mapped_column(default=1)
     shared_number_threshold: Mapped[int] = mapped_column(default=3)
+    ingest_error_threshold_pct: Mapped[int] = mapped_column(default=30)
+    ingest_date_format: Mapped[str] = mapped_column(default="YYYY-MM-DD")
     retention_policy: Mapped[dict[str, object]] = mapped_column(JSONB)
     sla_config: Mapped[dict[str, object]] = mapped_column(JSONB)
     emergency_number: Mapped[str] = mapped_column(default="112")
@@ -58,6 +60,14 @@ class Account(Base):
             "max_concurrent_calls BETWEEN 1 AND 200", name="ck_accounts_max_concurrent_calls"
         ),
         CheckConstraint("primary_metric IN ('nps','csat')", name="ck_accounts_primary_metric"),
+        CheckConstraint(
+            "ingest_error_threshold_pct BETWEEN 1 AND 100",
+            name="ck_accounts_ingest_error_threshold_pct",
+        ),
+        CheckConstraint(
+            "ingest_date_format IN ('YYYY-MM-DD','DD-MM-YYYY')",
+            name="ck_accounts_ingest_date_format",
+        ),
     )
 
 
