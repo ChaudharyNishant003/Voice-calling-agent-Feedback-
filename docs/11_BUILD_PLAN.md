@@ -232,6 +232,33 @@ was never actually observed until the Playground — the first code path to let 
 exceptions propagate all the way to a real response — hit it immediately. Fixed in `core/errors.py`
 with a regression test (`test_adapter_error_http_status_mapping`) so it can't silently regress again.
 
+**Call latency investigation.** A real demo call took 83+ seconds for one turn, then the next
+failed outright — traced by hand (real timed calls against the actual API, not guessed) to two
+compounding causes, not just "the model is slow": (1) `google-genai`'s default retry config
+(`"attempt-count-backoff"`, `max_retries=4`, no overall elapsed-time cap for that strategy) retries
+408/409/429/5xx and connection errors up to 5 total attempts, each able to take the full per-call
+timeout — verified a single rate-limited call taking 180+ seconds to even fail, despite an explicit
+`timeout=10.0`, since that parameter bounds one HTTP request, not the SDK's retry-and-backoff loop
+wrapping it; (2) the configured model, `gemini-3.8-flash`, is free-tier-capped at **20 requests/day**
+and that cap was already exhausted from same-day testing. `gemini-3.5-flash-lite` has its own
+separate quota and answered consistently in 4-5s across repeated real calls with no rate-limiting.
+Also found in the same pass: `gemini-2.5-flash` (still offered in `_MODEL_CHOICES`) is confirmed
+dead for new API keys (404, "no longer available to new users") — removed from the dropdown
+entirely rather than left as a guaranteed-broken option.
+
+Fixed: `adapters/gemini/llm.py` now constructs `genai.Client` with retries disabled
+(`_NO_RETRY_HTTP_OPTIONS`), so retry/fallback decisions live entirely in
+`_call_llm_with_retry` (which already existed and actually respects a wall-clock ceiling); 429
+responses now map to `AdapterRateLimited` (new code `PFA-DEMO-009`, 429 — doc 06 updated) instead
+of the generic `AdapterBadResponse`, so a rate-limit shows up distinctly in the debug timeline
+rather than looking like a generic bad response; `_LLM_TIMEOUT_S` lowered from 20s to 12s in both
+`demo_conversation_service.py` and `demo_playground_service.py` (real latency is 4-5s — 12s gives
+headroom without leaving a patient waiting ~40s across two attempts before a fallback, matching the
+old 20s ceiling); `_MODEL_CHOICES` reordered with `gemini-3.5-flash-lite` first as the recommended
+default; the already-configured demo Gemini credential's saved model was switched to it directly.
+Verified end to end after the fix: a real call turn (real Gemini call, real DB writes, real
+response) completed in **5.8 seconds**, full regression suite (211 tests) still green.
+
 **Not built** (explicitly out of scope for this MVP, per the spec): Part-2 real-time
 LiveKit/Deepgram/Cartesia voice transport, production telephony, analytics/reporting, barge-in/
 streaming. The conversation engine (`domain/conversation_language.py`,

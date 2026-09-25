@@ -51,7 +51,14 @@ DEMO_LOCATION_EXTERNAL_ID = "demo-location"
 DEMO_DEPARTMENT_CODE = "demo-department"
 DEMO_PHONE_E164 = "+919999999999"
 
-_LLM_TIMEOUT_S = 20.0
+# Verified by hand against the real Gemini API: gemini-3.5-flash-lite typically responds in
+# 4-5s. 12s gives real headroom above that without leaving the patient waiting ~40s (2 attempts
+# at the old 20s) before a fallback response — see docs/11_BUILD_PLAN.md's Demo MVP section for
+# the full latency investigation (a rate-limited/overloaded call bypasses this ceiling regardless,
+# since the SDK's own retry-on-429 behavior isn't bounded by the per-call timeout either way; the
+# real fix there is `adapters/gemini/llm.py`'s `_NO_RETRY_HTTP_OPTIONS` plus picking a model that
+# isn't already rate-limited).
+_LLM_TIMEOUT_S = 12.0
 _TRANSCRIPT_RETENTION_DAYS = 30
 _FALLBACK_RESPONSE = "Sorry, thoda samajh nahi aaya. Kya aap dobara bata sakte hain?"
 

@@ -42,7 +42,9 @@ from app.services.demo_playground_schemas import (
     TopicExtractionResult,
 )
 
-_LLM_TIMEOUT_S = 20.0
+# See demo_conversation_service.py's matching constant for the latency investigation this is
+# based on.
+_LLM_TIMEOUT_S = 12.0
 
 
 @dataclass(frozen=True)

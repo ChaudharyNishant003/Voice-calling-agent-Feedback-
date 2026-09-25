@@ -203,6 +203,7 @@ Columns: code · HTTP · log level · meaning · user message (UI key `err.<code
 | PFA-DEMO-006 | 404 | Demo call ID doesn't exist (Demo MVP) | "That call couldn't be found." |
 | PFA-DEMO-007 | 422 | Turn submitted or end requested on a demo call that already ended (Demo MVP) | "This call has already ended." |
 | PFA-DEMO-008 | 422 | Turn submitted for a provider with no connected (saved-and-tested) API key (Demo MVP) | "{provider} isn't configured yet. Save and test a working API key for it in Settings, then try again." |
+| PFA-DEMO-009 | 429 | Provider rate limit hit — e.g. a free-tier model's daily request cap (Demo MVP) | "This model is rate-limited right now. Try a different model, or wait and retry." |
 | PFA-API-001 | 422 | Request validation | "Some fields need attention." (+ field errors) |
 | PFA-API-002 | 429 | Rate limited | "You're going a bit fast. Please wait {seconds} seconds." |
 | PFA-API-003 | 409 | Idempotency key reused with different body | "This request conflicts with an earlier one. Refresh and try again." |

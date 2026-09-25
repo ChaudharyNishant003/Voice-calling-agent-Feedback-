@@ -21,10 +21,18 @@ from __future__ import annotations
 import time
 
 from google import genai
+from google.genai._gaos.utils.retries import RetryConfig
+from google.genai.types import HttpOptions
 from pydantic import BaseModel
 
 from app.adapters.interfaces import LLMResult
-from app.core.errors import AdapterAuthError, AdapterBadResponse, AdapterError, AdapterTimeout
+from app.core.errors import (
+    AdapterAuthError,
+    AdapterBadResponse,
+    AdapterError,
+    AdapterRateLimited,
+    AdapterTimeout,
+)
 from app.services.demo_llm_schema import DemoTurnResponse
 from app.services.demo_playground_schemas import (
     EndJudgmentResult,
@@ -46,6 +54,19 @@ _PROMPT_SCHEMAS: dict[str, type[BaseModel]] = {
     "playground_response_generation": ResponseGenerationResult,
 }
 
+# The SDK's default retry config (confirmed by reading its source — nothing this specific is
+# documented) is "attempt-count-backoff" with max_retries=4 and NO overall elapsed-time cap for
+# that strategy, retrying on 408/409/429/5xx and connection errors. Verified by hand: a single
+# rate-limited call took 180+ seconds to finally surface as a failure, since each of up to 5
+# attempts can itself take up to the per-call timeout. Disabling it here puts retry/fallback
+# decisions entirely in `_call_llm_with_retry` (demo_conversation_service.py), which is faster,
+# already exists, and — unlike the SDK's — actually respects a real wall-clock ceiling.
+_NO_RETRY_HTTP_OPTIONS = HttpOptions(
+    retry_options=RetryConfig(
+        strategy="none", backoff=None, retry_connection_errors=False, max_retries=0
+    )
+)
+
 
 def _map_gemini_error(exc: Exception) -> AdapterError:
     """The Interactions API (`client.aio.interactions.create`) raises from an internal, underscore-
@@ -63,6 +84,10 @@ def _map_gemini_error(exc: Exception) -> AdapterError:
     message = str(exc)
     if status in (401, 403) or "API_KEY_INVALID" in message or "API key not valid" in message:
         return AdapterAuthError("PFA-DEMO-002", message="Gemini rejected the API key.", cause=exc)
+    if status == 429:
+        return AdapterRateLimited(
+            "PFA-DEMO-009", message=f"Gemini rate limit hit: {exc}", cause=exc
+        )
     if isinstance(status, int) and status >= 500:
         return AdapterTimeout("PFA-DEMO-005", message=f"Gemini server error: {exc}", cause=exc)
     return AdapterBadResponse("PFA-DEMO-003", message=f"Gemini request failed: {exc}", cause=exc)
@@ -70,7 +95,7 @@ def _map_gemini_error(exc: Exception) -> AdapterError:
 
 class GeminiLLM:
     def __init__(self, *, api_key: str, model: str) -> None:
-        self._client = genai.Client(api_key=api_key)
+        self._client = genai.Client(api_key=api_key, http_options=_NO_RETRY_HTTP_OPTIONS)
         self._model = model
 
     async def _run(
@@ -165,7 +190,7 @@ async def test_api_key(api_key: str, model: str) -> None:
     """One cheap real call to validate a key — raises AdapterError subclasses on failure, exactly
     like `_run` above, so `provider_settings_service` can treat both the same way.
     """
-    client = genai.Client(api_key=api_key)
+    client = genai.Client(api_key=api_key, http_options=_NO_RETRY_HTTP_OPTIONS)
     try:
         await client.aio.interactions.create(model=model, input="ping", timeout=10.0)
     except TimeoutError as exc:

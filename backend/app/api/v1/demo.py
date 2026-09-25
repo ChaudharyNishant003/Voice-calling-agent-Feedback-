@@ -43,7 +43,13 @@ router = APIRouter(
 _TEST_FNS = {"gemini": gemini_test_api_key, "openai": openai_test_api_key}
 
 _MODEL_CHOICES = {
-    "gemini": ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-2.5-flash"],
+    # gemini-3.5-flash-lite listed first (and the recommended default): verified by hand to
+    # respond in ~4-5s with its own separate free-tier quota, vs. gemini-3.8-flash's free tier
+    # (20 requests/day, shared with nothing else) which a single demo session exhausts quickly and
+    # then hangs for 2-3 minutes before failing (docs/11_BUILD_PLAN.md's Demo MVP section).
+    # gemini-2.5-flash removed entirely — confirmed dead for new API keys (404 "no longer available
+    # to new users"), so offering it would just be a guaranteed-broken choice in the dropdown.
+    "gemini": ["gemini-3.5-flash-lite", "gemini-3.8-flash"],
     "openai": ["gpt-6-sol", "gpt-6-luna", "gpt-6-astra"],
 }
 
