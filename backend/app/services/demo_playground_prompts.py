@@ -32,9 +32,11 @@ def build_language_detection_prompt(patient_text: str) -> tuple[str, str]:
         "or English — and whether the patient explicitly asked to switch the conversation's "
         "language (e.g. 'English mein baat karo', 'please speak in Hindi'). Hindi and Hinglish "
         "count as the same family for detection purposes; if the message is a genuine mix, "
-        "classify it as 'hinglish'. Only set a requested language if they explicitly asked — a "
-        "message merely being in that language is not a request. Respond only with the "
-        "structured fields you were asked for."
+        "classify it as 'hinglish'. Classify by vocabulary, not script — Hindi/Hinglish written in "
+        "plain Roman letters ('theek tha', 'haan', 'accha', 'bahut zyada') is still hi/hinglish, "
+        "never English, just because it has no Devanagari. Only set a requested language if they "
+        "explicitly asked — a message merely being in that language is not a request. Respond only "
+        "with the structured fields you were asked for."
     )
     input_text = f"Patient: {patient_text}"
     return system, input_text

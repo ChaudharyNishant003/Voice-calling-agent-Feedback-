@@ -26,7 +26,12 @@ NextAction = Literal["greet", "ask_feedback", "follow_up", "acknowledge", "summa
 class DemoTurnResponse(BaseModel):
     response: str = Field(description="What the agent says next — short, natural, one question.")
     detected_language: DetectedLanguage = Field(
-        description="Language family the customer's last message was in."
+        description=(
+            "Language family the customer's last message was in. Classify by VOCABULARY, not "
+            "script — Hindi/Hinglish written in plain Roman letters (e.g. 'theek tha', 'haan', "
+            "'accha', 'bahut zyada', 'kya hua') is still 'hi'/'hinglish', never 'en', just because "
+            "it has no Devanagari. Only classify as 'en' when the actual words used are English."
+        )
     )
     requested_language: Literal["hi", "en"] | None = Field(
         default=None,

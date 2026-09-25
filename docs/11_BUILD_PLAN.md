@@ -259,6 +259,36 @@ default; the already-configured demo Gemini credential's saved model was switche
 Verified end to end after the fix: a real call turn (real Gemini call, real DB writes, real
 response) completed in **5.8 seconds**, full regression suite (211 tests) still green.
 
+**Conversation quality pass.** Ran 3 full multi-turn conversations (14 turns) through the real live
+call pipeline (not the Playground's separate prompt — this exercised `demo_prompts.py`, the actual
+production prompt) covering multi-topic mixed praise/complaint, vague answers, an explicit language
+switch, and a symptom mention. Found four real, reproducible issues in the actual model output (not
+guessed):
+1. An explicit English closing signal ("That's all, thank you") wasn't recognized as end-of-call —
+   the agent kept asking another question — while the Hindi equivalent ("Bas itna hi tha") *was*
+   caught correctly elsewhere. Inconsistent close-signal handling was the most serious finding.
+2. The model invented an answer to a question the patient never actually addressed ("Bas itna hi
+   tha, aur kuch nahi" got interpreted as "cleanliness was fine", though cleanliness was never
+   mentioned).
+3. A bare "Haan" (yes) to an ambiguous question got inflated into a specific claim ("doctor was
+   good") the patient never made.
+4. Mixed positive+negative feedback in one message only got acknowledged for the complaint half,
+   silently dropping the positive part.
+
+Fixed by adding explicit rules (with bilingual examples) to `demo_prompts.py`'s
+`SYSTEM_PROMPT_HEADER` for all four, then re-ran the exact same conversations to confirm — all four
+now correctly handled. Re-verification surfaced a fifth issue in the same pass: a short Roman-script
+Hinglish reply ("Theek tha") was misclassified as `detected_language: "en"`, locking the rest of
+that conversation to English even though the patient was speaking Hindi/Hinglish throughout — the
+schema's field description and the prompt only ever said what "en" vs "hi/hinglish" *means*, never
+that Hindi/Hinglish written in Roman script (no Devanagari) still counts as hi/hinglish, not
+English. Fixed in both `demo_llm_schema.py`'s field description and the system prompt (and mirrored
+in the Playground's parallel `demo_playground_schemas.py`/`demo_playground_prompts.py` for
+consistency, though that's separate code and not itself under test here); re-verified with two more
+full conversations designed to stress exactly this case — all correctly classified as hi/hinglish
+afterward. Full regression suite (211 tests) and lint/mypy stayed green throughout, since these were
+prompt-text and field-description changes only, no logic changes.
+
 **Not built** (explicitly out of scope for this MVP, per the spec): Part-2 real-time
 LiveKit/Deepgram/Cartesia voice transport, production telephony, analytics/reporting, barge-in/
 streaming. The conversation engine (`domain/conversation_language.py`,
