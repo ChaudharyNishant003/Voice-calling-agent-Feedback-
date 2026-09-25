@@ -1,12 +1,155 @@
-"""Real Gemini Flash LLMAdapter implementation — Sprint 4 (docs/11_BUILD_PLAN.md S4.1).
+"""Real Gemini LLMAdapter implementation (Demo MVP — replaces the Sprint-0 `NotImplementedError`
+stub). Uses the `google-genai` SDK's Interactions API (`client.aio.interactions.create`, verified
+against the installed SDK — this is a newer interface than the older `generate_content`/
+`GenerativeModel` shape, current as of implementation time per docs.ai.google.dev).
 
-Not implemented in Sprint 0: only fakes (`app.adapters.fakes.FakeLLM`) are wired up until
-credentials exist and this adapter is built against `app.adapters.interfaces.LLMAdapter`.
+Only `demo_feedback_turn` is a real prompt_id for now (Demo MVP scope); `classify`/`extract`/
+`summarise` delegate to the same request path so the adapter is fully `LLMAdapter`-Protocol-
+compliant rather than half-stubbed, even though nothing in this MVP calls them yet.
+
+Error codes are `PFA-DEMO-0xx` (docs/06_ERROR_HANDLING_AND_MESSAGES.md), not the existing
+`PFA-LLM-0xx` codes — those already have distinct, documented production-call-flow meanings
+("in-call timeout", "output failed content guard", "post-call extraction failed") that don't match
+these demo-specific failure modes; reusing them would silently overload their meaning.
 """
 
 from __future__ import annotations
 
+import time
+
+from google import genai
+from google.genai import errors as genai_errors
+
+from app.adapters.interfaces import LLMResult
+from app.core.errors import AdapterAuthError, AdapterBadResponse, AdapterError, AdapterTimeout
+from app.services.demo_llm_schema import DemoTurnResponse
+
+_PROMPT_SCHEMAS = {"demo_feedback_turn": DemoTurnResponse}
+
 
 class GeminiLLM:
-    def __init__(self, *, api_key: str) -> None:
-        raise NotImplementedError("Gemini adapter lands in Sprint 4 (S4.1)")
+    def __init__(self, *, api_key: str, model: str) -> None:
+        self._client = genai.Client(api_key=api_key)
+        self._model = model
+
+    async def _run(
+        self, prompt_id: str, variables: dict[str, object], *, timeout_s: float
+    ) -> LLMResult:
+        schema = _PROMPT_SCHEMAS.get(prompt_id)
+        if schema is None:
+            raise AdapterBadResponse("PFA-DEMO-001", message=f"unknown prompt_id {prompt_id!r}")
+
+        system_instruction = variables.get("system_instruction")
+        input_transcript = variables.get("input_transcript")
+        if not isinstance(system_instruction, str) or not isinstance(input_transcript, str):
+            raise AdapterBadResponse(
+                "PFA-DEMO-001",
+                message="variables must include system_instruction/input_transcript",
+            )
+
+        started = time.monotonic()
+        try:
+            interaction = await self._client.aio.interactions.create(
+                model=self._model,
+                system_instruction=system_instruction,
+                input=input_transcript,
+                response_format={
+                    "type": "text",
+                    "mime_type": "application/json",
+                    "schema": schema.model_json_schema(),
+                },
+                timeout=timeout_s,
+            )
+        except genai_errors.ClientError as exc:
+            status = getattr(exc, "status_code", None) or getattr(exc, "code", None)
+            if status in (401, 403):
+                raise AdapterAuthError(
+                    "PFA-DEMO-002", message="Gemini rejected the API key.", cause=exc
+                ) from exc
+            raise AdapterBadResponse(
+                "PFA-DEMO-003", message=f"Gemini request failed: {exc}", cause=exc
+            ) from exc
+        except genai_errors.ServerError as exc:
+            raise AdapterTimeout(
+                "PFA-DEMO-005", message=f"Gemini server error: {exc}", cause=exc
+            ) from exc
+        except TimeoutError as exc:
+            raise AdapterTimeout(
+                "PFA-DEMO-005", message="Gemini request timed out.", cause=exc
+            ) from exc
+
+        latency_ms = int((time.monotonic() - started) * 1000)
+        # `create()`'s declared return type is a union with a streaming variant that has no
+        # `output_text`, even though this adapter never passes `stream=True` (so at runtime it's
+        # always the plain `Interaction`). The SDK's own `Interaction` name resolves to an
+        # unrelated request-side type alias in this version, so `isinstance`/`cast` against it
+        # would be actively wrong — `getattr` with a default sidesteps the mismatch entirely and is
+        # still a genuine runtime safety net (empty string, not a crash, if the shape is ever
+        # unexpected).
+        raw_text = getattr(interaction, "output_text", None) or ""
+        if not raw_text:
+            raise AdapterBadResponse(
+                "PFA-DEMO-003", message="Gemini returned no text output."
+            )
+        try:
+            parsed = schema.model_validate_json(raw_text)
+        except ValueError as exc:
+            raise AdapterBadResponse(
+                "PFA-DEMO-004",
+                message=f"Gemini returned malformed structured output: {exc}",
+                cause=exc,
+            ) from exc
+
+        usage = getattr(interaction, "usage", None)
+        return LLMResult(
+            data=parsed.model_dump(),
+            raw_text=raw_text,
+            input_tokens=getattr(usage, "input_tokens", 0) or 0,
+            output_tokens=getattr(usage, "output_tokens", 0) or 0,
+            model=self._model,
+            latency_ms=latency_ms,
+        )
+
+    async def complete(
+        self, prompt_id: str, variables: dict[str, object], *, timeout_s: float
+    ) -> LLMResult:
+        return await self._run(prompt_id, variables, timeout_s=timeout_s)
+
+    async def classify(
+        self, prompt_id: str, variables: dict[str, object], *, timeout_s: float
+    ) -> LLMResult:
+        return await self._run(prompt_id, variables, timeout_s=timeout_s)
+
+    async def extract(
+        self, prompt_id: str, variables: dict[str, object], *, timeout_s: float
+    ) -> LLMResult:
+        return await self._run(prompt_id, variables, timeout_s=timeout_s)
+
+    async def summarise(
+        self, prompt_id: str, variables: dict[str, object], *, timeout_s: float
+    ) -> LLMResult:
+        return await self._run(prompt_id, variables, timeout_s=timeout_s)
+
+
+async def test_api_key(api_key: str, model: str) -> None:
+    """One cheap real call to validate a key — raises AdapterError subclasses on failure, exactly
+    like `_run` above, so `provider_settings_service` can treat both the same way.
+    """
+    client = genai.Client(api_key=api_key)
+    try:
+        await client.aio.interactions.create(model=model, input="ping", timeout=10.0)
+    except genai_errors.ClientError as exc:
+        status = getattr(exc, "status_code", None) or getattr(exc, "code", None)
+        if status in (401, 403):
+            raise AdapterAuthError(
+                "PFA-DEMO-002", message="Gemini rejected the API key.", cause=exc
+            ) from exc
+        raise AdapterBadResponse(
+            "PFA-DEMO-003", message=f"Gemini key test failed: {exc}", cause=exc
+        ) from exc
+    except AdapterError:
+        raise
+    except Exception as exc:  # SDK-internal errors (network, etc.) - still a clear test failure
+        raise AdapterBadResponse(
+            "PFA-DEMO-003", message=f"Gemini key test failed: {exc}", cause=exc
+        ) from exc

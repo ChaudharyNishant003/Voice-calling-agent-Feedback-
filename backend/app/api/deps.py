@@ -17,7 +17,8 @@ from collections.abc import AsyncIterator
 from fastapi import Cookie, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import AuthError, PermissionError_
+from app.core.config import get_settings
+from app.core.errors import AuthError, NotFoundError, PermissionError_
 from app.core.security import Permission, has_permission
 from app.db.base import get_session, get_superadmin_session
 from app.db.models.tenancy import User
@@ -71,6 +72,24 @@ def require(permission: Permission):  # type: ignore[no-untyped-def]
     # callable, not why it was added.
     _check.__pfa_permission__ = permission  # type: ignore[attr-defined]
     return _check
+
+
+async def require_demo_mode() -> None:
+    """Gate for every `/api/v1/demo/*` route (Demo MVP — docs/11_BUILD_PLAN.md). 404, not 403: an
+    unguarded demo endpoint shouldn't even reveal it exists when demo mode is off, matching doc 04
+    §1's "never leak existence" convention already used for cross-tenant 404s elsewhere. Fail-closed
+    by construction — `core/config.py`'s `validate_startup()` additionally refuses to boot with
+    `demo_mode=true` in production, so this can only ever pass on a deliberately-configured, non-
+    production, localhost demo instance.
+    """
+    settings = get_settings()
+    if not settings.demo_mode or settings.app_env == "production":
+        raise NotFoundError("PFA-SYS-011", message="Not found.")
+
+
+# Marker for tests/unit/test_route_completeness.py, mirroring require()'s `__pfa_permission__`
+# marker — a route behind this dependency doesn't need a `require(Permission.X)` too.
+require_demo_mode.__pfa_demo_gate__ = True  # type: ignore[attr-defined]
 
 
 def generate_csrf_token() -> str:

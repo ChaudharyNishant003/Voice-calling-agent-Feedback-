@@ -52,17 +52,26 @@ def _has_permission_marker(dependant: Dependant) -> bool:
     return any(_has_permission_marker(sub) for sub in dependant.dependencies)
 
 
+def _has_demo_gate_marker(dependant: Dependant) -> bool:
+    # Demo MVP — a route behind `require_demo_mode` 404s whenever demo mode is off (and demo mode
+    # itself is refused at boot in production), so it doesn't also need a `require(Permission.X)`.
+    if getattr(dependant.call, "__pfa_demo_gate__", None) is not None:
+        return True
+    return any(_has_demo_gate_marker(sub) for sub in dependant.dependencies)
+
+
 def test_every_route_is_public_or_permission_gated() -> None:
     unguarded: list[str] = []
     for path, route in _iter_api_routes(app.routes):
         if path in _PUBLIC_OR_SELF_SERVICE_PATHS:
             continue
-        if not _has_permission_marker(route.dependant):
-            unguarded.append(f"{sorted(route.methods or [])} {path}")
+        if _has_permission_marker(route.dependant) or _has_demo_gate_marker(route.dependant):
+            continue
+        unguarded.append(f"{sorted(route.methods or [])} {path}")
 
     assert not unguarded, (
-        f"Route(s) with no require(Permission.X) dependency and not in the explicit "
-        f"public/self-service allowlist: {unguarded}"
+        f"Route(s) with no require(Permission.X)/require_demo_mode dependency and not in the "
+        f"explicit public/self-service allowlist: {unguarded}"
     )
 
 

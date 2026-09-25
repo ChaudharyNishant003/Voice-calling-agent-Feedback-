@@ -76,6 +76,12 @@ class Settings(BaseSettings):
 
     sentry_dsn: str = ""
 
+    # Demo MVP (docs/11_BUILD_PLAN.md "Demo MVP" section) — unauthenticated browser voice demo
+    # routes under /api/v1/demo/*. OFF by default; validate_startup() refuses to boot with this on
+    # in production, matching the existing PFA-SYS-010 fail-closed pattern below. Localhost use only
+    # — never expose the api service publicly with this enabled.
+    demo_mode: bool = False
+
     @property
     def test_allowlist(self) -> list[str]:
         return [n.strip() for n in self.test_allowlist_e164.split(",") if n.strip()]
@@ -98,6 +104,8 @@ class Settings(BaseSettings):
             if any(fake_providers.values()):
                 bad = ", ".join(k for k, v in fake_providers.items() if v)
                 raise RuntimeError(f"PFA-SYS-010: fake providers not allowed in production: {bad}")
+            if self.demo_mode:
+                raise RuntimeError("PFA-SYS-010: DEMO_MODE=true is not allowed in production.")
 
 
 @lru_cache

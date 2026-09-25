@@ -11,6 +11,7 @@ from app.db.models.compliance import (
     PendingSafetyCase,
     SuppressionEntry,
 )
+from app.db.models.demo import DemoSettings, ProviderCredential
 from app.db.models.ingestion import IngestionBatch, IngestionRowError
 from app.db.models.patients_visits import Patient, Visit
 from app.db.models.platform import CostRate, FeatureFlag
@@ -29,6 +30,7 @@ __all__ = [
     "Complaint",
     "CostRate",
     "DeletionRequest",
+    "DemoSettings",
     "Department",
     "FeatureFlag",
     "IngestionBatch",
@@ -36,6 +38,7 @@ __all__ = [
     "Location",
     "Patient",
     "PendingSafetyCase",
+    "ProviderCredential",
     "RefreshToken",
     "SuppressionEntry",
     "SurveyResponse",

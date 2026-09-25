@@ -194,6 +194,12 @@ Columns: code · HTTP · log level · meaning · user message (UI key `err.<code
 | PFA-SYS-001 | 500 | Unexpected | "Something went wrong on our side. Please try again. (Ref: {request_id})" |
 | PFA-SYS-002 | 503 | DB unavailable/contention | "We're having trouble saving right now. Please try again in a minute." |
 | PFA-SYS-003 | 503 | Maintenance | "We're doing scheduled maintenance until {time}." |
+| PFA-SYS-011 | 404 | Demo route hit while `DEMO_MODE` is off (Demo MVP) | "Not found." |
+| PFA-DEMO-001 | 500 | Adapter called with an unknown prompt_id / missing variables (Demo MVP, internal bug not a vendor failure) | "Something went wrong on our side. Please try again." |
+| PFA-DEMO-002 | 401 | Provider rejected the API key on save-and-test or a live call (Demo MVP) | "That API key was rejected. Check it and try again." |
+| PFA-DEMO-003 | 502 | Provider request failed for another reason (Demo MVP) | "Couldn't reach the AI provider. Please try again." |
+| PFA-DEMO-004 | 502 | Provider returned output that didn't match the expected structure, after one retry (Demo MVP) | "The AI gave an unexpected response. Please try again." |
+| PFA-DEMO-005 | 504 | Provider request timed out (Demo MVP) | "The AI took too long to respond. Please try again." |
 | PFA-API-001 | 422 | Request validation | "Some fields need attention." (+ field errors) |
 | PFA-API-002 | 429 | Rate limited | "You're going a bit fast. Please wait {seconds} seconds." |
 | PFA-API-003 | 409 | Idempotency key reused with different body | "This request conflicts with an earlier one. Refresh and try again." |

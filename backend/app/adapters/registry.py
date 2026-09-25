@@ -88,3 +88,14 @@ def build_fake_registries() -> tuple[
     tts.register("fake", FakeTTS())
 
     return telephony, stt, llm, tts
+
+
+# Demo MVP's real-LLM registry builder deliberately does NOT live here, even though this looks
+# like the obvious place for it: `registry.py` is imported by `app.services` (e.g.
+# `services/demo_conversation_service.py`, for the generic `AdapterRegistry` type), and the
+# import-linter's "services never import vendor SDKs" contract checks *transitive* reachability —
+# if this module imported `app.adapters.gemini`/`openai` (even lazily, inside a function), every
+# service that imports `AdapterRegistry` from here would become transitively "importing Gemini",
+# and the contract correctly flags that. Real vendor adapter construction for the demo instead
+# happens in `api/v1/demo.py`, which isn't restricted by either import-linter contract — it builds
+# an `AdapterRegistry[LLMAdapter]()` directly via the public `register()` method used above.
