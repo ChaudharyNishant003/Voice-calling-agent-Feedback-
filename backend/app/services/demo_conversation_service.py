@@ -15,12 +15,13 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
+import pybreaker
 from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.adapters.interfaces import LLMAdapter
-from app.adapters.registry import AdapterRegistry
+from app.adapters.registry import AdapterRegistry, call_with_breaker
 from app.core.config import get_settings
 from app.core.errors import AdapterError, NotFoundError
 from app.core.errors import ValidationError as PFAValidationError
@@ -67,6 +68,10 @@ class DemoCallNotFoundError(NotFoundError):
 
 
 class DemoCallAlreadyEndedError(PFAValidationError):
+    pass
+
+
+class DemoProviderNotConfiguredError(PFAValidationError):
     pass
 
 
@@ -296,12 +301,17 @@ async def _call_llm_with_retry(
 
     for attempt in (1, 2):
         try:
-            # pybreaker ships no type stubs — `ignore_missing_imports` makes the module Any, but
-            # strict mode still flags calling its (genuinely unannotated) `call_async` method.
-            result = await breaker.call_async(  # type: ignore[no-untyped-call]
-                adapter.complete, "demo_feedback_turn", variables, timeout_s=_LLM_TIMEOUT_S
+            result = await call_with_breaker(
+                breaker, adapter.complete, "demo_feedback_turn", variables, timeout_s=_LLM_TIMEOUT_S
             )
             return DemoTurnResponse.model_validate(result.data)
+        except pybreaker.CircuitBreakerError as exc:
+            await _emit_event(
+                session,
+                call_id,
+                "ERROR",
+                {"attempt": attempt, "message": f"circuit breaker: {exc}"},
+            )
         except AdapterError as exc:
             await _emit_event(
                 session,
@@ -340,6 +350,18 @@ async def submit_turn(
         raise DemoCallNotFoundError("PFA-DEMO-006", message="Demo call not found.")
     if call.status != CallStatus.in_progress:
         raise DemoCallAlreadyEndedError("PFA-DEMO-007", message="This demo call has already ended.")
+    if not registry.has(provider):
+        # Checked here, before any persistence, rather than left to surface as a bare KeyError out
+        # of `_call_llm_with_retry` — this is a setup problem (no connected key for this provider),
+        # not a transient runtime failure, so it doesn't belong in that function's retry/fallback
+        # path (spec §17: "missing key" must say exactly what to configure, not crash).
+        raise DemoProviderNotConfiguredError(
+            "PFA-DEMO-008",
+            message=(
+                f"{provider} isn't configured yet. Save and test a working API key for it in "
+                "Settings, then try again."
+            ),
+        )
 
     settings = await demo_settings_service.get_settings(session)
 

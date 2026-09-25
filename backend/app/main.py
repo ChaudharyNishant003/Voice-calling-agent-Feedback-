@@ -8,6 +8,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 
 from fastapi import FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.auth import router as auth_router
 from app.api.v1.demo import router as demo_router
@@ -36,6 +37,17 @@ def create_app() -> FastAPI:
     configure_sentry(settings, service_name=SERVICE_NAME)
 
     app = FastAPI(title="Patient Feedback Voice Agent API", version="0.1.0")
+
+    # The dashboard (Next.js dev server, separate origin/port) calls this API directly from the
+    # browser — the demo routes have no server-side proxy. Scoped to the one configured dashboard
+    # origin, no credentials (demo routes are cookie-free; this isn't the authenticated-cookie
+    # CORS story, which Sprint 6's real dashboard integration will need to decide separately).
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[settings.dashboard_base_url],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     @app.middleware("http")
     async def _assign_request_id(

@@ -112,10 +112,17 @@ async def test_create_batch_happy_path_audits_and_stores_content(
     audit_rows = list(
         (
             await superadmin_session.scalars(
-                select(AuditLogEntry).where(AuditLogEntry.action == "ingestion.batch_created")
+                select(AuditLogEntry).where(
+                    AuditLogEntry.action == "ingestion.batch_created",
+                    AuditLogEntry.entity_id == batch.batch_id,
+                )
             )
         ).all()
     )
+    # Scoped to this test's own batch_id — the shared testcontainers Postgres isn't rolled back
+    # between tests (see test_auth_service.py's account_and_user fixture comment), so an unscoped
+    # query on `action` alone picks up "ingestion.batch_created" rows from every other test that
+    # ran earlier in the same full-suite session and flakes on run order/composition.
     assert len(audit_rows) == 1
     assert audit_rows[0].entity_id == batch.batch_id
 

@@ -18,13 +18,33 @@ from __future__ import annotations
 import time
 
 from google import genai
-from google.genai import errors as genai_errors
 
 from app.adapters.interfaces import LLMResult
 from app.core.errors import AdapterAuthError, AdapterBadResponse, AdapterError, AdapterTimeout
 from app.services.demo_llm_schema import DemoTurnResponse
 
 _PROMPT_SCHEMAS = {"demo_feedback_turn": DemoTurnResponse}
+
+
+def _map_gemini_error(exc: Exception) -> AdapterError:
+    """The Interactions API (`client.aio.interactions.create`) raises from an internal, underscore-
+    prefixed exception hierarchy (`google.genai._gaos.lib.compat_errors.*`) that is NOT the public
+    `google.genai.errors.ClientError`/`ServerError` classes — confirmed by direct testing against
+    the installed SDK, not assumed from docs. Catching those public classes here would silently
+    never match anything real this API surface raises. Duck-typing on `status_code` is robust to
+    that private hierarchy (and to it changing across SDK versions).
+
+    Google's API is also inconsistent about auth-failure status codes: an invalid key comes back as
+    HTTP 400 `INVALID_ARGUMENT`/`API_KEY_INVALID`, not 401/403 — so an invalid-key message is
+    treated as an auth failure regardless of status code, not just on 401/403.
+    """
+    status = getattr(exc, "status_code", None)
+    message = str(exc)
+    if status in (401, 403) or "API_KEY_INVALID" in message or "API key not valid" in message:
+        return AdapterAuthError("PFA-DEMO-002", message="Gemini rejected the API key.", cause=exc)
+    if isinstance(status, int) and status >= 500:
+        return AdapterTimeout("PFA-DEMO-005", message=f"Gemini server error: {exc}", cause=exc)
+    return AdapterBadResponse("PFA-DEMO-003", message=f"Gemini request failed: {exc}", cause=exc)
 
 
 class GeminiLLM:
@@ -60,23 +80,12 @@ class GeminiLLM:
                 },
                 timeout=timeout_s,
             )
-        except genai_errors.ClientError as exc:
-            status = getattr(exc, "status_code", None) or getattr(exc, "code", None)
-            if status in (401, 403):
-                raise AdapterAuthError(
-                    "PFA-DEMO-002", message="Gemini rejected the API key.", cause=exc
-                ) from exc
-            raise AdapterBadResponse(
-                "PFA-DEMO-003", message=f"Gemini request failed: {exc}", cause=exc
-            ) from exc
-        except genai_errors.ServerError as exc:
-            raise AdapterTimeout(
-                "PFA-DEMO-005", message=f"Gemini server error: {exc}", cause=exc
-            ) from exc
         except TimeoutError as exc:
             raise AdapterTimeout(
                 "PFA-DEMO-005", message="Gemini request timed out.", cause=exc
             ) from exc
+        except Exception as exc:
+            raise _map_gemini_error(exc) from exc
 
         latency_ms = int((time.monotonic() - started) * 1000)
         # `create()`'s declared return type is a union with a streaming variant that has no
@@ -138,18 +147,9 @@ async def test_api_key(api_key: str, model: str) -> None:
     client = genai.Client(api_key=api_key)
     try:
         await client.aio.interactions.create(model=model, input="ping", timeout=10.0)
-    except genai_errors.ClientError as exc:
-        status = getattr(exc, "status_code", None) or getattr(exc, "code", None)
-        if status in (401, 403):
-            raise AdapterAuthError(
-                "PFA-DEMO-002", message="Gemini rejected the API key.", cause=exc
-            ) from exc
-        raise AdapterBadResponse(
-            "PFA-DEMO-003", message=f"Gemini key test failed: {exc}", cause=exc
+    except TimeoutError as exc:
+        raise AdapterTimeout(
+            "PFA-DEMO-005", message="Gemini request timed out.", cause=exc
         ) from exc
-    except AdapterError:
-        raise
-    except Exception as exc:  # SDK-internal errors (network, etc.) - still a clear test failure
-        raise AdapterBadResponse(
-            "PFA-DEMO-003", message=f"Gemini key test failed: {exc}", cause=exc
-        ) from exc
+    except Exception as exc:
+        raise _map_gemini_error(exc) from exc

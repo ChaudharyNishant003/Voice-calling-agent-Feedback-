@@ -43,7 +43,8 @@ the dashboard login stub renders. GitHub Actions CI itself has not run yet (no r
   `tests/integration/test_encryption_no_plaintext.py`.
 - [ ] **S1.3 Auth**: login, refresh rotation, logout, lockout, MFA TOTP, password reset, CSRF, RBAC
   permission map + route-permission completeness test.
-  **Partial — increment 3a done, 3b open.** Built: password hashing (argon2id) + strength policy,
+  **Partial — increment 3a done, 3b PAUSED for the Demo MVP pivot** (see that section below —
+  resume 3b after the demo). Built: password hashing (argon2id) + strength policy,
   JWT access/refresh sessions with rotation + reuse detection, lockout (5 attempts / 15 min), RBAC
   permission map + route-completeness test, CSRF (double-submit cookie), `refresh_tokens` table
   (migration 0012, Open Question #23 — not in doc 02's DDL). Verified against real Postgres
@@ -69,6 +70,7 @@ the dashboard login stub renders. GitHub Actions CI itself has not run yet (no r
   `[tasks]` list (`app.workers.tasks.audit.verify_audit_chain`) — this caught a real bug where
   `autodiscover_tasks(["app.workers.tasks"])` silently registered nothing (see `celery_app.py`).
 - [ ] **S1.5 Accounts/locations/departments/users APIs** + activation guard (PFA-ACC-003).
+  **PAUSED for the Demo MVP pivot** — see that section below.
 - [ ] **S1.6 Ingestion**: upload endpoint, CSV parser in worker, all row validations/codes, batch
   thresholds, duplicate SHA, template download, SFTP poller (per-account chroot folder).
   Done when: 50k-row synthetic file processed < 2 min; every PFA-ING code covered by a test.
@@ -123,7 +125,89 @@ the dashboard login stub renders. GitHub Actions CI itself has not run yet (no r
   `tests/integration/test_eligibility_service.py` (real-Postgres rule scenarios incl. shared-number
   review → `resolve_review` → matching audit row, all in doc 07 §6's required same-transaction).
 - [ ] **S1.8 Suppression API** (add/check/remove-manual) + opt-out immutability.
+  **PAUSED for the Demo MVP pivot** — see that section below.
 Exit: upload a synthetic CSV → visits with correct eligibility; audit rows exist.
+
+## Demo MVP (branch `demo-mvp`) — browser voice feedback demo
+
+Sprint order above paused (S1.3b, S1.5, S1.8) to deliver a fast, browser-based client demo — a
+standalone spoken Hinglish/Hindi/English feedback conversation the product owner can run
+themselves in Chrome, no login, no real telephony. Built alongside the existing Sprint-1 code
+without modifying any of it; resume the paused items once the demo has served its purpose.
+
+**Backend.** Migration `0015_demo_mvp` adds two tables with no RLS (platform/demo-operator config,
+not tenant data — same treatment as the pre-existing `cost_rates`): `provider_credentials`
+(per-provider API key, encrypted directly with the local KEK — no per-account DEK, since there's
+no tenant to scope it to) and `demo_settings` (hospital/agent name, voice gender, singleton row).
+`domain/conversation_language.py` and `domain/conversation_topics.py` are pure, I/O-free rules —
+the deterministic language-lock (Hindi/Hinglish as one family, a real switch only after 3
+consecutive off-family turns, explicit request overrides immediately) and the end-of-call ceiling
+(`MIN_TURNS_BEFORE_END=3` floor, `MAX_TURNS=8` hard cap regardless of what the LLM signals) — the
+state machine decides, the LLM only suggests, matching doc 03's stated principle.
+`services/demo_conversation_service.py` orchestrates one fixed demo account/location/department
+(created once, reused) with a fresh patient/visit/call every "Start Demo Call"; reuses the existing
+`calls`/`transcripts`/`call_events` tables and schema unchanged. Real `LLMAdapter` implementations
+for Gemini (`gemini-3.8-flash` default) and OpenAI (`gpt-6-sol` default) — the only two adapters
+this MVP needs, since STT/TTS run entirely in the browser via the Web Speech API, not through
+Deepgram/Cartesia. `require_demo_mode()` (`api/deps.py`) 404s every `/api/v1/demo/*` route unless
+`DEMO_MODE=true` and `app_env != production`; `validate_startup()` additionally refuses to boot
+with demo mode on in production (belt-and-suspenders, `PFA-SYS-010`).
+
+Three real bugs were found and fixed by actually exercising the LLM call path end to end (not
+assumed from SDK docs, which are ~8 months stale relative to this session and, separately, just
+wrong about this specific case):
+1. The Gemini SDK's newer Interactions API raises from a private, underscore-prefixed exception
+   hierarchy (`google.genai._gaos.lib.compat_errors.*`) that shares no relationship with the public
+   `google.genai.errors.ClientError`/`ServerError` classes the adapter was written against — every
+   failure fell through uncaught. Fixed by duck-typing on `status_code` instead
+   (`adapters/gemini/llm.py`'s `_map_gemini_error`). Also: Google's API returns HTTP 400
+   `API_KEY_INVALID` for a bad key, not 401/403 — the adapter now treats that message as an auth
+   failure regardless of status code.
+2. `submit_turn` with a provider that has no *connected* saved key crashed with a raw `KeyError`
+   out of `AdapterRegistry.get()` instead of a clean error. Fixed with an upfront
+   `registry.has(provider)` check → `PFA-DEMO-008` (422, catalogued in doc 06).
+3. `pybreaker` 1.4.1's `CircuitBreaker.call_async` is unusable without `tornado` installed (its
+   `@gen.coroutine` wrapper references an undefined `gen` symbol — confirmed by direct testing;
+   every call raised `NameError`, meaning **every real LLM call would have crashed**, valid key or
+   not). `adapters/registry.py`'s new `call_with_breaker()` reimplements the same closed → open →
+   half-open state machine natively against asyncio, verified by hand against the real library
+   (trips after `fail_max` failures, fails fast while open, half-opens after `reset_timeout`,
+   reopens on a failed trial). This was the first code in the whole repo to actually call
+   `call_async` — Sprint 2+'s real STT/Telephony/TTS adapters will hit the same wall when they
+   land; this fix benefits them too.
+
+**Frontend** (`dashboard/src/app/demo/`): `page.tsx` (provider/model select, status badge, live
+call with transcript + manual text fallback), `settings/page.tsx` (per-provider key + Save & Test,
+hospital/agent/voice settings with a live check of which browser voices are actually available for
+the selected gender+language), `debug/page.tsx` (full event timeline, failed step highlighted).
+`hooks/useTurnController.ts` drives the `IDLE→...→LISTENING→PROCESSING→AGENT_SPEAKING→...→ENDED`
+state machine over the Web Speech API; voice and the manual text fallback both funnel through the
+same `submitAndRespond` path into the same backend engine.
+
+**Verified**: 32 new automated tests (unit + real-Postgres integration, incl. every case in the
+spec's language-switch script, the full malformed/failing-LLM retry-then-fallback path, and every
+demo route 404ing with demo mode off) all pass; full regression run of the existing suite (193
+tests) passes — in the course of which a pre-existing, unrelated test-isolation bug in
+`test_ingestion_service.py` (an unscoped audit-log query that only failed when the full suite ran
+together, never in isolation) was also found and fixed. `ruff`/`mypy --strict`/`lint-imports`/
+`eslint`/`tsc` all clean. Manually verified against the real running docker-compose stack in a
+real browser: full call start → Hinglish greeting → text-fallback turn → graceful fallback
+response (using an intentionally invalid key, since a real key needs to be entered by the product
+owner) → debug timeline showing the failed step clearly. Added a CORS policy (`main.py`, scoped to
+`dashboard_base_url`, no credentials) since the browser now calls the API directly rather than
+through a server-side proxy — nothing else in the existing auth/CORS story was touched.
+
+**Known environment quirk**: Docker Desktop on Windows does not reliably forward file-change
+events across the dashboard's bind mount to Next.js's dev-server watcher (confirmed: both new
+route files and edits to existing ones were silently missed, twice, during this work) — fixed with
+polling-based watching in `dashboard/next.config.mjs`. If dashboard edits still don't seem to take
+effect, `docker restart pfa-dashboard-1` forces a fresh compile.
+
+**Not built** (explicitly out of scope for this MVP, per the spec): Part-2 real-time
+LiveKit/Deepgram/Cartesia voice transport, production telephony, analytics/reporting, barge-in/
+streaming. The conversation engine (`domain/conversation_language.py`,
+`domain/conversation_topics.py`, `services/demo_conversation_service.py`) was deliberately kept
+independent of the browser/transport layer so it survives that transition unchanged.
 
 ## Sprint 2 — Orchestration & telephony
 - [ ] **S2.1 Contact window + retry policy** (pure) with exhaustive boundary tests.

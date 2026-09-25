@@ -200,6 +200,9 @@ Columns: code · HTTP · log level · meaning · user message (UI key `err.<code
 | PFA-DEMO-003 | 502 | Provider request failed for another reason (Demo MVP) | "Couldn't reach the AI provider. Please try again." |
 | PFA-DEMO-004 | 502 | Provider returned output that didn't match the expected structure, after one retry (Demo MVP) | "The AI gave an unexpected response. Please try again." |
 | PFA-DEMO-005 | 504 | Provider request timed out (Demo MVP) | "The AI took too long to respond. Please try again." |
+| PFA-DEMO-006 | 404 | Demo call ID doesn't exist (Demo MVP) | "That call couldn't be found." |
+| PFA-DEMO-007 | 422 | Turn submitted or end requested on a demo call that already ended (Demo MVP) | "This call has already ended." |
+| PFA-DEMO-008 | 422 | Turn submitted for a provider with no connected (saved-and-tested) API key (Demo MVP) | "{provider} isn't configured yet. Save and test a working API key for it in Settings, then try again." |
 | PFA-API-001 | 422 | Request validation | "Some fields need attention." (+ field errors) |
 | PFA-API-002 | 429 | Rate limited | "You're going a bit fast. Please wait {seconds} seconds." |
 | PFA-API-003 | 409 | Idempotency key reused with different body | "This request conflicts with an earlier one. Refresh and try again." |
