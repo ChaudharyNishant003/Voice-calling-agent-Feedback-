@@ -79,22 +79,7 @@ export default function DemoCallPage() {
   return (
     <main className="min-h-screen bg-muted/30 p-6">
       <div className="mx-auto max-w-3xl space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-xl font-semibold">Patient Feedback Voice Demo</h1>
-          <nav className="flex gap-3 text-sm">
-            <Link href="/demo/settings" className="text-primary underline-offset-4 hover:underline">
-              Settings
-            </Link>
-            {callId && (
-              <Link
-                href={`/demo/debug?call_id=${callId}`}
-                className="text-primary underline-offset-4 hover:underline"
-              >
-                Debug
-              </Link>
-            )}
-          </nav>
-        </div>
+        <h1 className="text-xl font-semibold">Patient Feedback Voice Demo</h1>
 
         <Card>
           <CardHeader>
@@ -147,9 +132,17 @@ export default function DemoCallPage() {
               <CardTitle className="text-base">
                 <PhaseLabel phase={phase} />
               </CardTitle>
-              <div className="flex gap-2 text-xs text-muted-foreground">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 {lockedLanguage && <Badge variant="secondary">Language: {lockedLanguage}</Badge>}
                 {topics.length > 0 && <Badge variant="secondary">Topics: {topics.join(", ")}</Badge>}
+                {callId && (
+                  <Link
+                    href={`/demo/debug?call_id=${callId}`}
+                    className="text-primary underline-offset-4 hover:underline"
+                  >
+                    View full debug timeline
+                  </Link>
+                )}
               </div>
             </CardHeader>
             <CardContent className="space-y-4">

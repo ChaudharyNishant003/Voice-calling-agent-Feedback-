@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -237,12 +236,7 @@ export default function DemoSettingsPage() {
   return (
     <main className="min-h-screen bg-muted/30 p-6">
       <div className="mx-auto max-w-3xl space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-xl font-semibold">Demo Settings</h1>
-          <Link href="/demo" className="text-sm text-primary underline-offset-4 hover:underline">
-            Back to Call
-          </Link>
-        </div>
+        <h1 className="text-xl font-semibold">Demo Settings</h1>
 
         {isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
         {providers?.map((p) => (
