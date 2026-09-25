@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bug, LogIn, PhoneCall, Settings } from "lucide-react";
+import { Bug, LogIn, PhoneCall, Settings, Workflow } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -19,6 +19,12 @@ const NAV_ITEMS = [
     label: "Debug",
     icon: Bug,
     isActive: (path: string) => path.startsWith("/demo/debug"),
+  },
+  {
+    href: "/demo/playground",
+    label: "Playground",
+    icon: Workflow,
+    isActive: (path: string) => path === "/demo/playground",
   },
   { href: "/login", label: "Login", icon: LogIn, isActive: (path: string) => path === "/login" },
 ];

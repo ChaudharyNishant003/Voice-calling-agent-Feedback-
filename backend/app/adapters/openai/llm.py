@@ -5,7 +5,8 @@ registry entry — zero changes to domain/services"). Uses the `openai` SDK's Re
 schema-validated `.output_parsed` — no manual `model_validate_json` step needed, unlike Gemini's.
 
 See `adapters/gemini/llm.py`'s module docstring for why error codes are `PFA-DEMO-0xx`, not
-`PFA-LLM-0xx`.
+`PFA-LLM-0xx`, and for why this registers the Playground's `playground_*` prompt_ids alongside the
+live call's `demo_feedback_turn`.
 """
 
 from __future__ import annotations
@@ -13,12 +14,27 @@ from __future__ import annotations
 import time
 
 import openai
+from pydantic import BaseModel
 
 from app.adapters.interfaces import LLMResult
 from app.core.errors import AdapterAuthError, AdapterBadResponse, AdapterError, AdapterTimeout
 from app.services.demo_llm_schema import DemoTurnResponse
+from app.services.demo_playground_schemas import (
+    EndJudgmentResult,
+    LanguageDetectionResult,
+    ResponseGenerationResult,
+    TopicExtractionResult,
+)
 
-_PROMPT_SCHEMAS = {"demo_feedback_turn": DemoTurnResponse}
+# See adapters/gemini/llm.py's comment on this same annotation — needed once this dict has more
+# than one distinct Pydantic model class as a value.
+_PROMPT_SCHEMAS: dict[str, type[BaseModel]] = {
+    "demo_feedback_turn": DemoTurnResponse,
+    "playground_language_detection": LanguageDetectionResult,
+    "playground_topic_extraction": TopicExtractionResult,
+    "playground_end_judgment": EndJudgmentResult,
+    "playground_response_generation": ResponseGenerationResult,
+}
 
 
 class OpenAILLM:

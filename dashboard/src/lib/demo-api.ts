@@ -81,6 +81,63 @@ export interface TimelineEvent {
   data: Record<string, unknown>;
 }
 
+// --- Playground (see docs/11_BUILD_PLAN.md's Demo MVP section) — every LLM-backed step response
+// carries raw_text/latency_ms/input_tokens/output_tokens/model alongside its parsed fields, so
+// cost/speed is part of comparing models, not just the wording.
+
+export interface PlaygroundLanguageDetectionResult {
+  detected_language: string;
+  requested_language: string | null;
+  raw_text: string;
+  latency_ms: number;
+  input_tokens: number;
+  output_tokens: number;
+  model: string;
+}
+
+export interface PlaygroundTopicExtractionResult {
+  topics: string[];
+  raw_text: string;
+  latency_ms: number;
+  input_tokens: number;
+  output_tokens: number;
+  model: string;
+}
+
+export interface PlaygroundLanguageLockResult {
+  locked_language: string | null;
+  consecutive_other_count: number;
+  switched: boolean;
+}
+
+export interface PlaygroundTopicTrackingResult {
+  topics_covered: string[];
+}
+
+export interface PlaygroundEndJudgmentResult {
+  wants_to_end: boolean;
+  summary: string | null;
+  raw_text: string;
+  latency_ms: number;
+  input_tokens: number;
+  output_tokens: number;
+  model: string;
+}
+
+export interface PlaygroundEndCeilingResult {
+  ends: boolean;
+}
+
+export interface PlaygroundResponseGenerationResult {
+  response: string;
+  next_action: string;
+  raw_text: string;
+  latency_ms: number;
+  input_tokens: number;
+  output_tokens: number;
+  model: string;
+}
+
 export const demoApi = {
   listProviders: () => request<ProviderStatus[]>("/demo/providers"),
 
@@ -111,4 +168,85 @@ export const demoApi = {
     request<{ status: string }>(`/demo/calls/${callId}/end`, { method: "POST" }),
 
   getEvents: (callId: string) => request<TimelineEvent[]>(`/demo/calls/${callId}/events`),
+
+  playgroundLanguageDetection: (provider: ProviderName, model: string, patientText: string) =>
+    request<PlaygroundLanguageDetectionResult>("/demo/playground/steps/language-detection", {
+      method: "POST",
+      body: JSON.stringify({ provider, model, patient_text: patientText }),
+    }),
+
+  playgroundTopicExtraction: (provider: ProviderName, model: string, patientText: string) =>
+    request<PlaygroundTopicExtractionResult>("/demo/playground/steps/topic-extraction", {
+      method: "POST",
+      body: JSON.stringify({ provider, model, patient_text: patientText }),
+    }),
+
+  playgroundLanguageLock: (params: {
+    detectedLanguage: string;
+    requestedLanguage: string | null;
+    priorLockedLanguage: string | null;
+    priorStreak: number;
+  }) =>
+    request<PlaygroundLanguageLockResult>("/demo/playground/steps/language-lock", {
+      method: "POST",
+      body: JSON.stringify({
+        detected_language: params.detectedLanguage,
+        requested_language: params.requestedLanguage,
+        prior_locked_language: params.priorLockedLanguage,
+        prior_streak: params.priorStreak,
+      }),
+    }),
+
+  playgroundTopicTracking: (topicsMentioned: string[], priorTopicsCovered: string[]) =>
+    request<PlaygroundTopicTrackingResult>("/demo/playground/steps/topic-tracking", {
+      method: "POST",
+      body: JSON.stringify({
+        topics_mentioned: topicsMentioned,
+        prior_topics_covered: priorTopicsCovered,
+      }),
+    }),
+
+  playgroundEndJudgment: (params: {
+    provider: ProviderName;
+    model: string;
+    patientText: string;
+    topicsCovered: string[];
+    turnCount: number;
+  }) =>
+    request<PlaygroundEndJudgmentResult>("/demo/playground/steps/end-judgment", {
+      method: "POST",
+      body: JSON.stringify({
+        provider: params.provider,
+        model: params.model,
+        patient_text: params.patientText,
+        topics_covered: params.topicsCovered,
+        turn_count: params.turnCount,
+      }),
+    }),
+
+  playgroundEndCeiling: (turnCount: number, llmWantsToEnd: boolean) =>
+    request<PlaygroundEndCeilingResult>("/demo/playground/steps/end-ceiling", {
+      method: "POST",
+      body: JSON.stringify({ turn_count: turnCount, llm_wants_to_end: llmWantsToEnd }),
+    }),
+
+  playgroundResponseGeneration: (params: {
+    provider: ProviderName;
+    model: string;
+    patientText: string;
+    lockedLanguage: string | null;
+    topicsCovered: string[];
+    isEnding: boolean;
+  }) =>
+    request<PlaygroundResponseGenerationResult>("/demo/playground/steps/response-generation", {
+      method: "POST",
+      body: JSON.stringify({
+        provider: params.provider,
+        model: params.model,
+        patient_text: params.patientText,
+        locked_language: params.lockedLanguage,
+        topics_covered: params.topicsCovered,
+        is_ending: params.isEnding,
+      }),
+    }),
 };

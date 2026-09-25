@@ -80,19 +80,20 @@ class AdapterError(DependencyError):
 
 
 class AdapterTimeout(AdapterError):
-    pass
+    http_status = 504
 
 
 class AdapterBadResponse(AdapterError):
-    pass
+    http_status = 502
 
 
 class AdapterAuthError(AdapterError):
+    http_status = 401
     retryable = False
 
 
 class AdapterRateLimited(AdapterError):
-    pass
+    http_status = 429
 
 
 def error_envelope(error: PFAError, request_id: str) -> dict[str, object]:

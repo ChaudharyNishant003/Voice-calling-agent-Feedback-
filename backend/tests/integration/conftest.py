@@ -184,3 +184,17 @@ async def configured_db_env(migrated_database: dict[str, str]) -> AsyncIterator[
         else:
             os.environ[key] = value
     get_settings.cache_clear()
+
+
+@pytest.fixture
+def demo_mode_on() -> Iterator[None]:
+    """Shared by every `/api/v1/demo/*` test file (Demo MVP) — `DEMO_MODE` defaults to False."""
+    old = os.environ.get("DEMO_MODE")
+    os.environ["DEMO_MODE"] = "true"
+    get_settings.cache_clear()
+    yield
+    if old is None:
+        os.environ.pop("DEMO_MODE", None)
+    else:
+        os.environ["DEMO_MODE"] = old
+    get_settings.cache_clear()

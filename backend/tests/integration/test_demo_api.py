@@ -10,17 +10,14 @@ live-vendor test.
 
 from __future__ import annotations
 
-import os
 from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, patch
 
-import pytest
 import pytest_asyncio
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from app.adapters.interfaces import LLMResult
-from app.core.config import get_settings
 from app.core.errors import AdapterAuthError
 
 _DEMO_ROUTES: list[tuple[str, str]] = [
@@ -32,6 +29,13 @@ _DEMO_ROUTES: list[tuple[str, str]] = [
     ("POST", "/api/v1/demo/calls/00000000-0000-7000-8000-000000000000/turns"),
     ("POST", "/api/v1/demo/calls/00000000-0000-7000-8000-000000000000/end"),
     ("GET", "/api/v1/demo/calls/00000000-0000-7000-8000-000000000000/events"),
+    ("POST", "/api/v1/demo/playground/steps/language-detection"),
+    ("POST", "/api/v1/demo/playground/steps/topic-extraction"),
+    ("POST", "/api/v1/demo/playground/steps/language-lock"),
+    ("POST", "/api/v1/demo/playground/steps/topic-tracking"),
+    ("POST", "/api/v1/demo/playground/steps/end-judgment"),
+    ("POST", "/api/v1/demo/playground/steps/end-ceiling"),
+    ("POST", "/api/v1/demo/playground/steps/response-generation"),
 ]
 
 _GOOD_TURN_DATA = {
@@ -62,19 +66,6 @@ async def client(configured_app: FastAPI) -> AsyncIterator[AsyncClient]:
     transport = ASGITransport(app=configured_app)
     async with AsyncClient(transport=transport, base_url="https://testserver") as ac:
         yield ac
-
-
-@pytest.fixture
-def demo_mode_on() -> AsyncIterator[None]:
-    old = os.environ.get("DEMO_MODE")
-    os.environ["DEMO_MODE"] = "true"
-    get_settings.cache_clear()
-    yield
-    if old is None:
-        os.environ.pop("DEMO_MODE", None)
-    else:
-        os.environ["DEMO_MODE"] = old
-    get_settings.cache_clear()
 
 
 async def test_every_demo_route_404s_when_demo_mode_off(client: AsyncClient) -> None:

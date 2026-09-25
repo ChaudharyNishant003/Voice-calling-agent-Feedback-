@@ -25,7 +25,13 @@ from app.adapters.openai.llm import test_api_key as openai_test_api_key
 from app.adapters.registry import AdapterRegistry
 from app.api.deps import get_superadmin_db_session, require_demo_mode
 from app.core.errors import AdapterAuthError, AdapterError
-from app.services import demo_conversation_service, demo_settings_service, provider_settings_service
+from app.services import (
+    demo_conversation_service,
+    demo_playground_service,
+    demo_settings_service,
+    provider_settings_service,
+)
+from app.services.demo_conversation_service import DemoProviderNotConfiguredError
 
 # Real vendor adapter imports/construction live here, not in `services/` or `adapters/registry.py`
 # — see that module's note for why (import-linter's transitive-reachability check on the "services
@@ -102,6 +108,105 @@ class TimelineEventResponse(BaseModel):
     data: dict[str, object]
 
 
+class PlaygroundLanguageDetectionRequest(BaseModel):
+    provider: Literal["gemini", "openai"]
+    model: str
+    patient_text: str
+
+
+class PlaygroundLanguageDetectionResponse(BaseModel):
+    detected_language: str
+    requested_language: str | None
+    raw_text: str
+    latency_ms: int
+    input_tokens: int
+    output_tokens: int
+    model: str
+
+
+class PlaygroundTopicExtractionRequest(BaseModel):
+    provider: Literal["gemini", "openai"]
+    model: str
+    patient_text: str
+
+
+class PlaygroundTopicExtractionResponse(BaseModel):
+    topics: list[str]
+    raw_text: str
+    latency_ms: int
+    input_tokens: int
+    output_tokens: int
+    model: str
+
+
+class PlaygroundLanguageLockRequest(BaseModel):
+    detected_language: str
+    requested_language: str | None = None
+    prior_locked_language: str | None = None
+    prior_streak: int = 0
+
+
+class PlaygroundLanguageLockResponse(BaseModel):
+    locked_language: str | None
+    consecutive_other_count: int
+    switched: bool
+
+
+class PlaygroundTopicTrackingRequest(BaseModel):
+    topics_mentioned: list[str]
+    prior_topics_covered: list[str] = []
+
+
+class PlaygroundTopicTrackingResponse(BaseModel):
+    topics_covered: list[str]
+
+
+class PlaygroundEndJudgmentRequest(BaseModel):
+    provider: Literal["gemini", "openai"]
+    model: str
+    patient_text: str
+    topics_covered: list[str] = []
+    turn_count: int
+
+
+class PlaygroundEndJudgmentResponse(BaseModel):
+    wants_to_end: bool
+    summary: str | None
+    raw_text: str
+    latency_ms: int
+    input_tokens: int
+    output_tokens: int
+    model: str
+
+
+class PlaygroundEndCeilingRequest(BaseModel):
+    turn_count: int
+    llm_wants_to_end: bool
+
+
+class PlaygroundEndCeilingResponse(BaseModel):
+    ends: bool
+
+
+class PlaygroundResponseGenerationRequest(BaseModel):
+    provider: Literal["gemini", "openai"]
+    model: str
+    patient_text: str
+    locked_language: str | None = None
+    topics_covered: list[str] = []
+    is_ending: bool = False
+
+
+class PlaygroundResponseGenerationResponse(BaseModel):
+    response: str
+    next_action: str
+    raw_text: str
+    latency_ms: int
+    input_tokens: int
+    output_tokens: int
+    model: str
+
+
 async def _build_llm_registry(
     session: AsyncSession, providers: list[Literal["gemini", "openai"]]
 ) -> AdapterRegistry[LLMAdapter]:
@@ -114,6 +219,28 @@ async def _build_llm_registry(
         api_key, model = credentials["openai"]
         registry.register("openai", OpenAILLM(api_key=api_key, model=model))
     return registry
+
+
+async def _build_single_adapter(
+    session: AsyncSession, provider: Literal["gemini", "openai"], model: str
+) -> LLMAdapter:
+    """Playground variant of `_build_llm_registry`: same saved, decrypted key, but the *requested*
+    model rather than whatever's saved as the default — comparing models is the entire point, so
+    the Playground is never limited to the one model Settings happens to have saved.
+    """
+    credentials = await provider_settings_service.get_decrypted_credentials(session, [provider])
+    if provider not in credentials:
+        raise DemoProviderNotConfiguredError(
+            "PFA-DEMO-008",
+            message=(
+                f"{provider} isn't configured yet. Save and test a working API key for it in "
+                "Settings, then try again."
+            ),
+        )
+    api_key, _saved_model = credentials[provider]
+    if provider == "gemini":
+        return GeminiLLM(api_key=api_key, model=model)
+    return OpenAILLM(api_key=api_key, model=model)
 
 
 @router.get("/providers")
@@ -242,3 +369,135 @@ async def get_call_events(
         TimelineEventResponse(event_id=e.event_id, ts=e.ts.isoformat(), type=e.type, data=e.data)
         for e in events
     ]
+
+
+# --- Playground: manual, per-stage, per-model pipeline inspection (docs/11_BUILD_PLAN.md's Demo
+# MVP section). Stateless — no Call/Transcript/CallEvent rows are written by any of these routes,
+# and nothing here changes what the live /demo call above actually uses.
+
+
+@router.post("/playground/steps/language-detection")
+async def playground_language_detection(
+    body: PlaygroundLanguageDetectionRequest,
+    session: AsyncSession = Depends(get_superadmin_db_session),
+) -> PlaygroundLanguageDetectionResponse:
+    adapter = await _build_single_adapter(session, body.provider, body.model)
+    outcome = await demo_playground_service.run_language_detection(
+        adapter, patient_text=body.patient_text
+    )
+    return PlaygroundLanguageDetectionResponse(
+        detected_language=outcome.parsed.detected_language,
+        requested_language=outcome.parsed.requested_language,
+        raw_text=outcome.raw_text,
+        latency_ms=outcome.latency_ms,
+        input_tokens=outcome.input_tokens,
+        output_tokens=outcome.output_tokens,
+        model=outcome.model,
+    )
+
+
+@router.post("/playground/steps/topic-extraction")
+async def playground_topic_extraction(
+    body: PlaygroundTopicExtractionRequest,
+    session: AsyncSession = Depends(get_superadmin_db_session),
+) -> PlaygroundTopicExtractionResponse:
+    adapter = await _build_single_adapter(session, body.provider, body.model)
+    outcome = await demo_playground_service.run_topic_extraction(
+        adapter, patient_text=body.patient_text
+    )
+    return PlaygroundTopicExtractionResponse(
+        topics=outcome.parsed.topics,
+        raw_text=outcome.raw_text,
+        latency_ms=outcome.latency_ms,
+        input_tokens=outcome.input_tokens,
+        output_tokens=outcome.output_tokens,
+        model=outcome.model,
+    )
+
+
+@router.post("/playground/steps/language-lock")
+async def playground_language_lock(
+    body: PlaygroundLanguageLockRequest,
+) -> PlaygroundLanguageLockResponse:
+    outcome = demo_playground_service.run_language_lock(
+        detected_language=body.detected_language,
+        requested_language=body.requested_language,
+        prior_locked_language=body.prior_locked_language,
+        prior_streak=body.prior_streak,
+    )
+    return PlaygroundLanguageLockResponse(
+        locked_language=outcome.locked_language,
+        consecutive_other_count=outcome.consecutive_other_count,
+        switched=outcome.switched,
+    )
+
+
+@router.post("/playground/steps/topic-tracking")
+async def playground_topic_tracking(
+    body: PlaygroundTopicTrackingRequest,
+) -> PlaygroundTopicTrackingResponse:
+    outcome = demo_playground_service.run_topic_tracking(
+        topics_mentioned=body.topics_mentioned, prior_topics_covered=body.prior_topics_covered
+    )
+    return PlaygroundTopicTrackingResponse(topics_covered=outcome.topics_covered)
+
+
+@router.post("/playground/steps/end-judgment")
+async def playground_end_judgment(
+    body: PlaygroundEndJudgmentRequest,
+    session: AsyncSession = Depends(get_superadmin_db_session),
+) -> PlaygroundEndJudgmentResponse:
+    adapter = await _build_single_adapter(session, body.provider, body.model)
+    outcome = await demo_playground_service.run_end_judgment(
+        adapter,
+        patient_text=body.patient_text,
+        topics_covered=frozenset(body.topics_covered),
+        turn_count=body.turn_count,
+    )
+    return PlaygroundEndJudgmentResponse(
+        wants_to_end=outcome.parsed.wants_to_end,
+        summary=outcome.parsed.summary,
+        raw_text=outcome.raw_text,
+        latency_ms=outcome.latency_ms,
+        input_tokens=outcome.input_tokens,
+        output_tokens=outcome.output_tokens,
+        model=outcome.model,
+    )
+
+
+@router.post("/playground/steps/end-ceiling")
+async def playground_end_ceiling(
+    body: PlaygroundEndCeilingRequest,
+) -> PlaygroundEndCeilingResponse:
+    ends = demo_playground_service.run_end_ceiling(
+        turn_count=body.turn_count, llm_wants_to_end=body.llm_wants_to_end
+    )
+    return PlaygroundEndCeilingResponse(ends=ends)
+
+
+@router.post("/playground/steps/response-generation")
+async def playground_response_generation(
+    body: PlaygroundResponseGenerationRequest,
+    session: AsyncSession = Depends(get_superadmin_db_session),
+) -> PlaygroundResponseGenerationResponse:
+    adapter = await _build_single_adapter(session, body.provider, body.model)
+    settings = await demo_settings_service.get_settings(session)
+    outcome = await demo_playground_service.run_response_generation(
+        adapter,
+        hospital_name=settings.hospital_name,
+        agent_name=settings.agent_name,
+        voice_gender=settings.voice_gender,
+        locked_language=body.locked_language,
+        topics_covered=frozenset(body.topics_covered),
+        is_ending=body.is_ending,
+        patient_text=body.patient_text,
+    )
+    return PlaygroundResponseGenerationResponse(
+        response=outcome.parsed.response,
+        next_action=outcome.parsed.next_action,
+        raw_text=outcome.raw_text,
+        latency_ms=outcome.latency_ms,
+        input_tokens=outcome.input_tokens,
+        output_tokens=outcome.output_tokens,
+        model=outcome.model,
+    )

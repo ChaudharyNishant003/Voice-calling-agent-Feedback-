@@ -203,6 +203,35 @@ route files and edits to existing ones were silently missed, twice, during this 
 polling-based watching in `dashboard/next.config.mjs`. If dashboard edits still don't seem to take
 effect, `docker restart pfa-dashboard-1` forces a fresh compile.
 
+**Unified sidebar shell.** The four dashboard pages (`/demo`, `/demo/settings`, `/demo/debug`,
+`/login`) moved under a new `app/(shell)/` route group with a persistent left sidebar
+(`components/app-sidebar.tsx`) instead of ad hoc per-page text links — no URLs changed (route
+groups don't add a path segment). `/` now redirects to `/demo` instead of `/login`, since the demo
+is the actual working entry point right now. Found and fixed along the way: the polling
+`watchOptions` fix above initially assigned `config.watchOptions` wholesale, which dropped
+webpack's default `node_modules`/`.next` ignore list and caused a continuous Fast-Refresh rebuild
+loop that was silently dropping click events on nav links — fixed by setting `ignored` explicitly.
+
+**Pipeline Playground** (`/demo/playground`) — splits the live call's one combined LLM call into
+seven independently-triggerable pipeline stages (language detection, topic extraction, language
+lock, topic tracking, should-end judgment, end-of-call ceiling, response generation), each showing
+its own input/output and, for the four LLM-backed stages, a per-stage provider+model choice so
+different models can be compared stage by stage. Entirely new, parallel code
+(`services/demo_playground_schemas.py`, `demo_playground_prompts.py`, `demo_playground_service.py`,
+7 new routes in `api/v1/demo.py`) — the live call's own prompt/schema/service files are untouched,
+and the Playground writes nothing to the database (stateless, and doesn't affect what the live call
+actually uses). Unlike the live call, a Playground run never retries or falls back on a bad model
+response — surfacing the failure clearly is the point for a tool built to compare models.
+
+Building and testing this surfaced a real, previously-undetected bug: `AdapterAuthError`/
+`AdapterBadResponse`/`AdapterTimeout` all inherited `DependencyError`'s blanket `http_status = 503`
+instead of the specific statuses doc 06 documents for their `PFA-DEMO-00x` codes (401/502/504).
+Every existing call site that could raise one also caught it internally before it reached the HTTP
+layer (the live call's retry-then-fallback, `save_provider_key`'s try/except), so the wrong status
+was never actually observed until the Playground — the first code path to let one of these
+exceptions propagate all the way to a real response — hit it immediately. Fixed in `core/errors.py`
+with a regression test (`test_adapter_error_http_status_mapping`) so it can't silently regress again.
+
 **Not built** (explicitly out of scope for this MVP, per the spec): Part-2 real-time
 LiveKit/Deepgram/Cartesia voice transport, production telephony, analytics/reporting, barge-in/
 streaming. The conversation engine (`domain/conversation_language.py`,

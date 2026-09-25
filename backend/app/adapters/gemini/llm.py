@@ -3,9 +3,12 @@ stub). Uses the `google-genai` SDK's Interactions API (`client.aio.interactions.
 against the installed SDK — this is a newer interface than the older `generate_content`/
 `GenerativeModel` shape, current as of implementation time per docs.ai.google.dev).
 
-Only `demo_feedback_turn` is a real prompt_id for now (Demo MVP scope); `classify`/`extract`/
-`summarise` delegate to the same request path so the adapter is fully `LLMAdapter`-Protocol-
-compliant rather than half-stubbed, even though nothing in this MVP calls them yet.
+`demo_feedback_turn` is the live call's combined-stage prompt_id; the four `playground_*` ones are
+the Playground's narrower, single-stage prompts (`services/demo_playground_service.py`) — both
+routes through the exact same `_run()`, since the adapter only ever needs a `(prompt_id,
+system_instruction, input_transcript)` triple regardless of which stage it's for. `classify`/
+`extract`/`summarise` delegate to the same request path so the adapter is fully `LLMAdapter`-
+Protocol-compliant rather than half-stubbed, even though nothing in this MVP calls them yet.
 
 Error codes are `PFA-DEMO-0xx` (docs/06_ERROR_HANDLING_AND_MESSAGES.md), not the existing
 `PFA-LLM-0xx` codes — those already have distinct, documented production-call-flow meanings
@@ -18,12 +21,30 @@ from __future__ import annotations
 import time
 
 from google import genai
+from pydantic import BaseModel
 
 from app.adapters.interfaces import LLMResult
 from app.core.errors import AdapterAuthError, AdapterBadResponse, AdapterError, AdapterTimeout
 from app.services.demo_llm_schema import DemoTurnResponse
+from app.services.demo_playground_schemas import (
+    EndJudgmentResult,
+    LanguageDetectionResult,
+    ResponseGenerationResult,
+    TopicExtractionResult,
+)
 
-_PROMPT_SCHEMAS = {"demo_feedback_turn": DemoTurnResponse}
+# Explicit annotation needed: with a single value type, mypy previously inferred
+# `dict[str, type[DemoTurnResponse]]` correctly on its own; with several different Pydantic model
+# classes as values it instead infers `dict[str, ModelMetaclass]` (the classes' shared metaclass,
+# not their shared base), which breaks every `schema.model_json_schema()`/`model_validate_json()`
+# call below.
+_PROMPT_SCHEMAS: dict[str, type[BaseModel]] = {
+    "demo_feedback_turn": DemoTurnResponse,
+    "playground_language_detection": LanguageDetectionResult,
+    "playground_topic_extraction": TopicExtractionResult,
+    "playground_end_judgment": EndJudgmentResult,
+    "playground_response_generation": ResponseGenerationResult,
+}
 
 
 def _map_gemini_error(exc: Exception) -> AdapterError:
