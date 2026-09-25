@@ -17,7 +17,13 @@ import openai
 from pydantic import BaseModel
 
 from app.adapters.interfaces import LLMResult
-from app.core.errors import AdapterAuthError, AdapterBadResponse, AdapterError, AdapterTimeout
+from app.core.errors import (
+    AdapterAuthError,
+    AdapterBadResponse,
+    AdapterError,
+    AdapterRateLimited,
+    AdapterTimeout,
+)
 from app.services.demo_llm_schema import DemoTurnResponse
 from app.services.demo_playground_schemas import (
     EndJudgmentResult,
@@ -39,7 +45,12 @@ _PROMPT_SCHEMAS: dict[str, type[BaseModel]] = {
 
 class OpenAILLM:
     def __init__(self, *, api_key: str, model: str) -> None:
-        self._client = openai.AsyncOpenAI(api_key=api_key)
+        # max_retries=0: unlike Gemini's undocumented, uncapped internal retry (see
+        # adapters/gemini/llm.py's _NO_RETRY_HTTP_OPTIONS comment), openai-python's default of 2
+        # retries is well-documented and properly time-bounded — not the same bug. Disabled anyway
+        # for consistency: retry/fallback already lives in `_call_llm_with_retry`, and one retry
+        # layer is simpler to reason about than two stacked ones.
+        self._client = openai.AsyncOpenAI(api_key=api_key, max_retries=0)
         self._model = model
 
     async def _run(
@@ -73,6 +84,10 @@ class OpenAILLM:
         except openai.APITimeoutError as exc:
             raise AdapterTimeout(
                 "PFA-DEMO-005", message="OpenAI request timed out.", cause=exc
+            ) from exc
+        except openai.RateLimitError as exc:
+            raise AdapterRateLimited(
+                "PFA-DEMO-009", message=f"OpenAI rate limit hit: {exc}", cause=exc
             ) from exc
         except openai.APIError as exc:
             raise AdapterBadResponse(
@@ -121,12 +136,16 @@ async def test_api_key(api_key: str, model: str) -> None:
     """One cheap real call to validate a key — raises AdapterError subclasses on failure, exactly
     like `_run` above, so `provider_settings_service` can treat both providers the same way.
     """
-    client = openai.AsyncOpenAI(api_key=api_key)
+    client = openai.AsyncOpenAI(api_key=api_key, max_retries=0)
     try:
         await client.responses.create(model=model, input="ping", timeout=10.0)
     except openai.AuthenticationError as exc:
         raise AdapterAuthError(
             "PFA-DEMO-002", message="OpenAI rejected the API key.", cause=exc
+        ) from exc
+    except openai.RateLimitError as exc:
+        raise AdapterRateLimited(
+            "PFA-DEMO-009", message=f"OpenAI rate limit hit: {exc}", cause=exc
         ) from exc
     except AdapterError:
         raise
