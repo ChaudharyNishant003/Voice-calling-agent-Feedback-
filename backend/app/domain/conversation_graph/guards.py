@@ -108,7 +108,13 @@ def apply_guards(
     fallback_promo: str,
     fallback_medical: str,
     fallback_privacy: str,
+    enforce_length: bool = True,
 ) -> GuardResult:
+    """`enforce_length=False` is for the small set of FIXED safety-escalation lines (PRD §7.4) that
+    are verbatim longer than the generic 25/30-word turn budget by design — an emergency phone
+    number or the Tele-MANAS helpline number must never be truncated away (CLAUDE.md rule 6: safety
+    errs toward escalation, never a downgrade). Every other guard still applies regardless.
+    """
     triggered: list[str] = []
     out = strip_formatting(text)
     out = enforce_single_question(out)
@@ -124,6 +130,9 @@ def apply_guards(
     if check_pre_identity_disclosure(out, identity_verified=identity_verified):
         triggered.append("GUARD_PRIVACY")
         return GuardResult(text=fallback_privacy, triggered=tuple(triggered), needs_retry=False)
+
+    if not enforce_length:
+        return GuardResult(text=out, triggered=tuple(triggered), needs_retry=False)
 
     n_words = word_count(out)
     if n_words > MAX_WORDS_HARD:

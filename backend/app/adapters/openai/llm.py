@@ -31,6 +31,7 @@ from app.services.demo_playground_schemas import (
     ResponseGenerationResult,
     TopicExtractionResult,
 )
+from app.services.pfa_node_contract import NodeContract
 
 # See adapters/gemini/llm.py's comment on this same annotation — needed once this dict has more
 # than one distinct Pydantic model class as a value.
@@ -40,6 +41,7 @@ _PROMPT_SCHEMAS: dict[str, type[BaseModel]] = {
     "playground_topic_extraction": TopicExtractionResult,
     "playground_end_judgment": EndJudgmentResult,
     "playground_response_generation": ResponseGenerationResult,
+    "pfa_node_turn": NodeContract,
 }
 
 

@@ -146,6 +146,11 @@ scripts:
     deva: "लगता है आवाज़ नहीं आ रही, हम बाद में call करेंगे।"
     english: "It looks like the line isn't coming through — we'll call back later."
 
+  stt_could_not_hear:
+    roman: "Maaf kijiye, aapki awaaz clearly nahi aayi. Kya aap dobara bata sakte hain?"
+    deva: "माफ़ कीजिए, आपकी आवाज़ clearly नहीं आई। क्या आप दोबारा बता सकते हैं?"
+    english: "Sorry, I couldn't hear that clearly. Could you say that again?"
+
   deflect_medical:
     roman: "Is baare mein doctor hi sahi bata payenge. Main aapka sawaal team tak {bhej_rahi}."
     deva: "इस बारे में doctor ही सही बता पाएंगे। मैं आपका सवाल team तक {bhej_rahi}।"
