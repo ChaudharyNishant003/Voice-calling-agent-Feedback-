@@ -295,6 +295,68 @@ streaming. The conversation engine (`domain/conversation_language.py`,
 `domain/conversation_topics.py`, `services/demo_conversation_service.py`) was deliberately kept
 independent of the browser/transport layer so it survives that transition unchanged.
 
+### PRD v2 — Conversation Graph, Safety Layer & Scenario Harness (branch `demo-mvp`)
+
+Replaces the free-form demo loop above with a node-graph engine: fixed nodes, the LLM proposes
+within a node, deterministic code owns every transition and safety decision. Full plan/decisions in
+the PRD (`20940476-PRD_PFA_Conversation_Graph_and_Safety_v2.md`, supplied out-of-repo); this log
+covers what's actually built and verified so far.
+
+**Phase 2 (engine core) + Phase 3 (safety) — done.** Pure `domain/conversation_graph/` package:
+`graph.py` (14-node state machine + legal-edge table), `state.py` (call state + topic/severity/
+register/safety enums), `policy.py` (opt-out/wants-human/repeat-request pre-checks), `safety.py`
+(lexicon scan OR-merged with the LLM's own safety flag), `severity.py` (S0-S4 resolution +
+escalation routing), `scripts.py` + `assets/scripts.yaml` (every FIXED line, gendered, in Hinglish/
+Devanagari/English), `normalizer.py` (numbers/dates/times/phone → spoken words), `guards.py` (the 6
+output guards), `repair.py` (repeat-question/silence counters). 351 unit tests.
+
+Found and fixed a real bug during verification: the safety lexicon used `\b` word boundaries, which
+rely on Python's `\w` and exclude Devanagari combining vowel signs (category Mc — e.g. the ा matra
+in "मरना"). `\b` was silently splitting mid-word for any Hindi phrase ending in a matra, so several
+seeded self_harm/threat phrases never matched. Fixed with whitespace-based boundaries
+(`(?<!\S)...(?!\S)` instead of `\b...\b`) in `safety.py`.
+
+**Phase 4 (LLM integration) — done.** 9 per-node prompt files (`assets/node_prompts/*.md`,
+one per node where the LLM genuinely interprets patient intent — pure-FIXED utility/terminal nodes
+never call the LLM), `services/pfa_call_prompts.py` (system instruction + input transcript
+construction), `services/pfa_call_service.py` (the full per-turn orchestrator: safety pre-scan,
+policy pre-checks, LLM call with retry+fallback, severity-gate resolution, illegal-transition
+rejection, FIXED-vs-LLM reply composition). Registered `"pfa_node_turn" -> NodeContract` in both the
+Gemini and OpenAI adapters.
+
+A second real bug surfaced here: the length guard was truncating FIXED safety-escalation scripts
+and the consent disclosure line — both legitimately exceed the generic 25/30-word turn budget by
+design (the PRD's own emergency-number lines, Tele-MANAS helpline number, and consent text). The
+PRD's word limit is specified for LLM-*generated* replies, not vetted FIXED copy, so
+`pfa_call_service._finalize`'s length enforcement now defaults to off and is opted back into only
+the 3 call sites that carry genuine LLM-authored text (readback summary, fresh-complaint
+acknowledgement, plain LLM-node replies) — every other guard (promo/medical-advice/pre-identity
+disclosure) still always runs regardless.
+
+12 new mock-LLM integration tests (queued stub adapter, no database) — full happy path, opt-out/
+wants-human/repeat-request, safety escalation via both the keyword and LLM-flag paths, S3
+auto-advance, illegal-transition rejection, silence handling, LLM-contract-failure fallback, guard
+truncation. Then a real Gemini smoke call (`gemini-3.5-flash-lite`) through all 9 node prompts:
+first pass 6/9 (3 timed out — transient free-tier latency, not a prompt problem, confirmed by
+immediately retrying those 3 successfully). All 9 produced coherent, well-formed `NodeContract`
+JSON. Notably, the live model hallucinated two invalid node names (`visit_experience_rating`,
+`consent` instead of the real `open_experience`/`purpose_consent_time`) — real-world confirmation
+that `graph.next_node()`'s illegal-transition rejection is load-bearing, not just a theoretical
+safety net. 369/369 tests green across the whole conversation-graph suite throughout; ruff/
+mypy --strict/lint-imports clean.
+
+Known, documented simplifications versus the PRD's literal wording (see `pfa_call_service.py`'s
+module docstring for the full reasoning): `CALLBACK` is a one-shot exit rather than the PRD's
+two-turn "ask when → confirm slot" (matches `graph.py`'s already-tested terminal-node model, which
+has no self-loop for it); the `ESCALATE_URGENT` medical/self-harm follow-up ("would you like a
+callback now?") is answered with a small deterministic yes/no check instead of a tenth LLM prompt
+file, since the call proceeds to `CLOSE` either way.
+
+**Not yet built:** migration `0016` and real persistence (`pfa_call_state`, results/escalations
+tables — currently `process_turn`/`start_turn` are pure functions with no DB session), new API
+endpoints, resume-after-restart, dashboard wiring (patient form, results/escalations pages, debug
+additions), the 40-scenario harness, CSV-ingested-visit call start, README/final report.
+
 ## Sprint 2 — Orchestration & telephony
 - [ ] **S2.1 Contact window + retry policy** (pure) with exhaustive boundary tests.
 - [ ] **S2.2 Dial service + beat dial tick** (30 s): window, daily cap, concurrency semaphore, pre-dial
