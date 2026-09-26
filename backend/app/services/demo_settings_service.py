@@ -23,12 +23,22 @@ async def get_settings(session: AsyncSession) -> DemoSettings:
 
 
 async def save_settings(
-    session: AsyncSession, *, hospital_name: str, agent_name: str, voice_gender: str
+    session: AsyncSession,
+    *,
+    hospital_name: str,
+    agent_name: str,
+    voice_gender: str,
+    hospital_phone: str | None = None,
+    escalation_sla_text: str | None = None,
+    tts_script: str = "devanagari",
 ) -> DemoSettings:
     row = await get_settings(session)
     row.hospital_name = hospital_name
     row.agent_name = agent_name
     row.voice_gender = voice_gender
+    row.hospital_phone = hospital_phone
+    row.escalation_sla_text = escalation_sla_text
+    row.tts_script = tts_script
     row.updated_at = datetime.now(UTC)
     await session.flush()
     return row

@@ -21,6 +21,10 @@ class AccountStatus(enum.StrEnum):
 class VisitType(enum.StrEnum):
     outpatient = "outpatient"
     diagnostic = "diagnostic"
+    # Added by migration 0016 (PRD v2 §10): PRD's OPD/DIAGNOSTICS map to the two values above;
+    # IPD -> inpatient, EMERGENCY -> emergency.
+    inpatient = "inpatient"
+    emergency = "emergency"
 
 
 class EligibilityStatus(enum.StrEnum):

@@ -111,7 +111,7 @@ class CallEventOut:
     data: dict[str, object]
 
 
-async def _get_or_create_demo_account(session: AsyncSession) -> Account:
+async def get_or_create_demo_account(session: AsyncSession) -> Account:
     existing = await session.scalar(select(Account).where(Account.name == DEMO_ACCOUNT_NAME))
     if existing is not None:
         return existing
@@ -127,7 +127,7 @@ async def _get_or_create_demo_account(session: AsyncSession) -> Account:
     return account
 
 
-async def _get_or_create_demo_location(session: AsyncSession, account_id: UUID) -> Location:
+async def get_or_create_demo_location(session: AsyncSession, account_id: UUID) -> Location:
     existing = await session.scalar(
         select(Location).where(
             Location.account_id == account_id,
@@ -144,7 +144,7 @@ async def _get_or_create_demo_location(session: AsyncSession, account_id: UUID) 
     return location
 
 
-async def _get_or_create_demo_department(session: AsyncSession, account_id: UUID) -> Department:
+async def get_or_create_demo_department(session: AsyncSession, account_id: UUID) -> Department:
     existing = await session.scalar(
         select(Department).where(
             Department.account_id == account_id, Department.code == DEMO_DEPARTMENT_CODE
@@ -223,9 +223,9 @@ def _greeting_text(hospital_name: str, agent_name: str, voice_gender: str) -> st
 
 
 async def start_call(session: AsyncSession, *, provider: str) -> DemoCallStarted:
-    account = await _get_or_create_demo_account(session)
-    location = await _get_or_create_demo_location(session, account.account_id)
-    department = await _get_or_create_demo_department(session, account.account_id)
+    account = await get_or_create_demo_account(session)
+    location = await get_or_create_demo_location(session, account.account_id)
+    department = await get_or_create_demo_department(session, account.account_id)
     settings = await demo_settings_service.get_settings(session)
 
     kek = get_local_kek()

@@ -8,7 +8,7 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import REAL, CheckConstraint, ForeignKey, Index, Integer, LargeBinary, String
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -44,6 +44,14 @@ class Complaint(Base):
     verbatim_end_ms: Mapped[int] = mapped_column(Integer)
     retention_until: Mapped[datetime]
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    # Added by migration 0016 (PRD v2 §6 Node 6) — fields not already covered by
+    # reason_codes/sentiment/urgency/verbatim_*.
+    when_text: Mapped[str | None]
+    where_text: Mapped[str | None]
+    wants_contact: Mapped[bool | None]
+    preferred_time: Mapped[str | None]
+    staff_name: Mapped[str | None]
+    triggered_by: Mapped[str | None]
 
     __table_args__ = (
         CheckConstraint(
@@ -51,6 +59,10 @@ class Complaint(Base):
             name="ck_complaints_urgency_source",
         ),
         CheckConstraint("verbatim_end_ms > verbatim_start_ms", name="ck_complaints_verbatim_order"),
+        CheckConstraint(
+            "triggered_by IS NULL OR triggered_by IN ('keyword','llm','both')",
+            name="ck_complaints_triggered_by",
+        ),
     )
 
 
@@ -122,4 +134,41 @@ class CaseEvent(Base):
 
     __table_args__ = (
         CheckConstraint("actor_type IN ('user','system')", name="ck_case_events_actor_type"),
+    )
+
+
+class PfaEscalation(Base):
+    """The handoff packet (PRD v2 §7.6, migration 0016) — a *pre-case* record: one call can produce
+    zero or more of these, each optionally linked to a `Case` once the existing case-creation path
+    turns it into one.
+    """
+
+    __tablename__ = "pfa_escalations"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid7)
+    account_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("accounts.account_id")
+    )
+    call_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("calls.call_id"))
+    complaint_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("complaints.complaint_id")
+    )
+    case_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("cases.case_id"))
+    type: Mapped[str]
+    category: Mapped[str]
+    triggered_by: Mapped[str]
+    handoff_json: Mapped[dict[str, object]] = mapped_column(JSONB)
+    status: Mapped[str] = mapped_column(default="open")
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    acknowledged_at: Mapped[datetime | None]
+
+    __table_args__ = (
+        CheckConstraint("type IN ('standard','urgent')", name="ck_pfa_escalations_type"),
+        CheckConstraint(
+            "triggered_by IN ('keyword','llm','both')", name="ck_pfa_escalations_triggered_by"
+        ),
+        CheckConstraint(
+            "status IN ('open','acknowledged','closed')", name="ck_pfa_escalations_status"
+        ),
+        Index("ix_pfa_escalations_account_status", "account_id", "status"),
     )
