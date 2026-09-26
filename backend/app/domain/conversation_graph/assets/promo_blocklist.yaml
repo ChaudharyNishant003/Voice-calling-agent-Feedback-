@@ -1,0 +1,13 @@
+# Promotion blocklist (PRD v2 §9.4). Any agent reply matching one of these patterns is replaced by
+# the current node's FIXED fallback question — the agent must never promote a service/package.
+patterns:
+  - "\\bpackage\\b"
+  - "\\boffer\\b"
+  - "\\bdiscount\\b"
+  - "health\\s*checkup\\s*package"
+  - "\\bbook\\s*now\\b"
+  - "\\bscheme\\b"
+  - "\\bmembership\\b"
+  - "free\\s*consultation"
+  - "\\boffer\\s*hai\\b"
+  - "\\bpackage\\s*le\\s*lijiye\\b"

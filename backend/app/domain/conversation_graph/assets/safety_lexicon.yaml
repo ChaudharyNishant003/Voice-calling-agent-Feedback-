@@ -1,0 +1,35 @@
+# Safety lexicon (PRD v2 §7.2). One category -> list of regex patterns, matched case-insensitively
+# with word-boundary semantics (applied in code, not baked into the regex text here) against the
+# *normalised* patient utterance. Devanagari and Roman-script variants are both listed explicitly,
+# not assumed to be equivalent by transliteration. False positives are acceptable; false negatives
+# are not — when adding an entry, prefer a broader pattern over a narrower one.
+
+medical_now:
+  - "saans|sans|साँस|सांस"
+  - "chest pain|seene mein dard|सीने में दर्द"
+  - "behosh|बेहोश"
+  - "khoon|खून|bleeding|खून बह"
+
+medication_error:
+  - "galat dawai|गलत दवाई|wrong medicine|wrong medication"
+
+self_harm:
+  - "jeena nahi chahta|जीना नहीं चाहता|jeene ka man nahi"
+  - "marna chahta|मरना चाहता|marne ka man"
+  - "suicide|khud ko khatam|खुद को खत्म|khudkushi|खुदकुशी"
+
+threat:
+  - "maar dalunga|मार डालूंगा|maar doonga|मार दूंगा"
+
+abuse:
+  - "maar diya|मार दिया|maarpeet|मारपीट|hit me|beaten"
+
+sexual_misconduct:
+  - "chhua|छुआ|chheda|छेड़ा|touched me|inappropriately touched"
+
+privacy:
+  - "report kisi aur ko|रिपोर्ट किसी और को|data leak|डेटा लीक"
+
+discrimination:
+  - "jaati ki wajah se|जाति की वजह से|caste"
+  - "dharam ki wajah se|धर्म की वजह से|religion ki wajah"

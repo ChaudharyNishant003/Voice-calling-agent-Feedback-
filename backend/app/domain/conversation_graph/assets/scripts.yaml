@@ -1,0 +1,202 @@
+# FIXED script lines (PRD v2 §6, §7.3, §7.4, §7.5). Never LLM-generated. Each script key has three
+# forms — roman (Hinglish), deva (Devanagari Hindi), english — chosen at render time by
+# `scripts.py` based on the call's locked language family + the account's `tts_script` setting.
+# Gendered tokens (e.g. {bol_rahi}) are resolved from the `tokens` block below before the
+# roman/deva forms are used; the english form never has gendered verb tokens (English doesn't
+# conjugate for the speaker's gender the same way).
+
+tokens:
+  female:
+    bol_rahi: {roman: "bol rahi hoon", deva: "बोल रही हूँ"}
+    samajh_gayi: {roman: "samajh gayi", deva: "समझ गई"}
+    bhej_rahi: {roman: "bhej rahi hoon", deva: "भेज रही हूँ"}
+    kar_sakti: {roman: "kar sakti hoon", deva: "कर सकती हूँ"}
+    leti: {roman: "leti hoon", deva: "लेती हूँ"}
+    deti: {roman: "deti hoon", deva: "देती हूँ"}
+    karwati: {roman: "karwati hoon", deva: "करवाती हूँ"}
+    pahuncha_rahi: {roman: "pahuncha rahi hoon", deva: "पहुँचा रही हूँ"}
+  male:
+    bol_rahi: {roman: "bol raha hoon", deva: "बोल रहा हूँ"}
+    samajh_gayi: {roman: "samajh gaya", deva: "समझ गया"}
+    bhej_rahi: {roman: "bhej raha hoon", deva: "भेज रहा हूँ"}
+    kar_sakti: {roman: "kar sakta hoon", deva: "कर सकता हूँ"}
+    leti: {roman: "leta hoon", deva: "लेता हूँ"}
+    deti: {roman: "deta hoon", deva: "देता हूँ"}
+    karwati: {roman: "karwata hoon", deva: "करवाता हूँ"}
+    pahuncha_rahi: {roman: "pahuncha raha hoon", deva: "पहुँचा रहा हूँ"}
+
+scripts:
+  open_and_identify:
+    roman: "Namaste, main {hospital} se {agent} {bol_rahi}. Kya meri baat {first_name} ji se ho rahi hai?"
+    deva: "नमस्ते, मैं {hospital} से {agent} {bol_rahi}। क्या मेरी बात {first_name} जी से हो रही है?"
+    english: "Hi, this is {agent} calling from {hospital}. Am I speaking with {first_name}?"
+
+  caregiver_opener:
+    roman: "Koi baat nahi. Kya aap unke parivaar se hain? Hum unki haal hi ki {hospital} visit ke baare mein chhota sa feedback le rahe the."
+    deva: "कोई बात नहीं। क्या आप उनके परिवार से हैं? हम उनकी हाल ही की {hospital} visit के बारे में छोटा सा feedback ले रहे थे।"
+    english: "No problem. Are you a family member? We were collecting brief feedback about their recent visit to {hospital}."
+
+  purpose_consent_time:
+    roman: "Main hospital ki taraf se ek AI assistant {bol_rahi}. Aapki {visit_date_words} ki visit ke baare mein do-teen minute ka feedback {leti} tha, taaki hospital apni service behtar kar sake. Yeh call quality ke liye record ho rahi hai. Kya abhi baat karna theek rahega?"
+    deva: "मैं hospital की तरफ से एक AI assistant {bol_rahi}। आपकी {visit_date_words} की visit के बारे में दो-तीन मिनट का feedback {leti} था, ताकि hospital अपनी service बेहतर कर सके। यह call quality के लिए record हो रही है। क्या अभी बात करना ठीक रहेगा?"
+    english: "I'm an AI assistant calling on behalf of the hospital. I wanted to take two to three minutes of feedback about your visit on {visit_date_words}, so the hospital can improve its service. This call is being recorded for quality purposes. Is now a good time to talk?"
+
+  refuses_recording:
+    roman: "Theek hai, main aapki baat hospital team tak {pahuncha_rahi}, woh aapse bina recording ke baat kar lenge."
+    deva: "ठीक है, मैं आपकी बात hospital team तक {pahuncha_rahi}, वो आपसे बिना recording के बात कर लेंगे।"
+    english: "That's fine — I'll pass your note to the hospital team, and they'll follow up without recording."
+
+  asks_if_ai:
+    roman: "Ji, main ek AI assistant hoon, hospital ki taraf se feedback {leti}."
+    deva: "जी, मैं एक AI assistant हूँ, hospital की तरफ से feedback {leti}।"
+    english: "Yes, I'm an AI assistant, collecting feedback on behalf of the hospital."
+
+  overall_rating:
+    roman: "Agar ek se paanch ke beech batayein, jahan ek matlab bilkul achha nahi aur paanch matlab bahut achha, toh aap apni visit ko kitne denge?"
+    deva: "अगर एक से पाँच के बीच बताएं, जहाँ एक मतलब बिलकुल अच्छा नहीं और पाँच मतलब बहुत अच्छा, तो आप अपनी visit को कितने देंगे?"
+    english: "On a scale of one to five, where one means not good at all and five means excellent, how would you rate your visit?"
+
+  complaint_acknowledge:
+    roman: "Yeh sunkar afsos hua. Aapne batane ke liye shukriya."
+    deva: "यह सुनकर अफ़सोस हुआ। आपने बताने के लिए शुक्रिया।"
+    english: "I'm sorry to hear that. Thank you for letting us know."
+
+  complaint_specifics:
+    roman: "Thoda bata sakte hain kya hua tha?"
+    deva: "थोड़ा बता सकते हैं क्या हुआ था?"
+    english: "Could you tell me a little about what happened?"
+
+  complaint_when_where:
+    roman: "Yeh kis din ya kis department mein hua?"
+    deva: "यह किस दिन या किस department में हुआ?"
+    english: "Which day or which department was this in?"
+
+  complaint_contact:
+    roman: "Aap chahenge ki hospital is baare mein aapse sampark kare?"
+    deva: "आप चाहेंगे कि hospital इस बारे में आपसे संपर्क करे?"
+    english: "Would you like the hospital to follow up with you about this?"
+
+  complaint_staff_name:
+    roman: "Agar naam yaad ho toh bata dijiye, zaroori nahi hai."
+    deva: "अगर नाम याद हो तो बता दीजिए, ज़रूरी नहीं है।"
+    english: "If you remember a name, feel free to share it — it's not required."
+
+  anything_else:
+    roman: "Kya aap kuch aur batana chahenge?"
+    deva: "क्या आप कुछ और बताना चाहेंगे?"
+    english: "Is there anything else you'd like to share?"
+
+  readback_frame:
+    roman: "Main confirm {kar_sakti}: {summary}. {next_step_sentence} Kya maine sahi samjha?"
+    deva: "मैं confirm {kar_sakti}: {summary}। {next_step_sentence} क्या मैंने सही समझा?"
+    english: "Let me confirm: {summary}. {next_step_sentence} Did I get that right?"
+
+  next_step_with_sla:
+    roman: "Main yeh team tak {bhej_rahi} aur woh aapse {sla_words} mein sampark karenge."
+    deva: "मैं यह team तक {bhej_rahi} और वो आपसे {sla_words} में संपर्क करेंगे।"
+    english: "I'm passing this to the team, and they'll get in touch with you within {sla_words}."
+
+  next_step_no_sla:
+    roman: "Main yeh team tak {bhej_rahi}, team ise review karegi."
+    deva: "मैं यह team तक {bhej_rahi}, team इसे review करेगी।"
+    english: "I'm passing this to the team, and they'll review it."
+
+  close:
+    roman: "Aapka samay dene ke liye bahut shukriya. {hospital_phone_sentence}Aapka din shubh ho, aur jaldi swasth rahiye."
+    deva: "आपका समय देने के लिए बहुत शुक्रिया। {hospital_phone_sentence}आपका दिन शुभ हो, और जल्दी स्वस्थ रहिए।"
+    english: "Thank you so much for your time. {hospital_phone_sentence}Have a great day, and get well soon."
+
+  close_short:
+    roman: "Aapka samay dene ke liye shukriya. Aapka din shubh ho."
+    deva: "आपका समय देने के लिए शुक्रिया। आपका दिन शुभ हो।"
+    english: "Thank you for your time. Have a great day."
+
+  hospital_phone_sentence:
+    roman: "Agar kabhi kuch aur batana ho toh hospital ka number hai {hospital_phone_chunks}. "
+    deva: "अगर कभी कुछ और बताना हो तो hospital का number है {hospital_phone_chunks}। "
+    english: "If you'd like to share anything else, the hospital's number is {hospital_phone_chunks}. "
+
+  callback_ask:
+    roman: "Bilkul. Aapke liye kab call karna theek rahega, aaj shaam ya kal?"
+    deva: "बिल्कुल। आपके लिए कब call करना ठीक रहेगा, आज शाम या कल?"
+    english: "Of course. When would be a good time to call you — this evening or tomorrow?"
+
+  callback_confirm:
+    roman: "Theek hai, hum {slot_words} call karenge. Dhanyavaad."
+    deva: "ठीक है, हम {slot_words} call करेंगे। धन्यवाद।"
+    english: "Okay, we'll call you {slot_words}. Thank you."
+
+  opt_out:
+    roman: "Samajh gayi, hum aapko is baare mein dobara call nahi karenge. Aapka din achha rahe."
+    deva: "समझ गई, हम आपको इस बारे में दोबारा call नहीं करेंगे। आपका दिन अच्छा रहे।"
+    english: "Understood, we won't call you about this again. Have a good day."
+
+  close_wrong:
+    roman: "Maaf kijiye, galti se call lag gaya. Aapka din achha rahe."
+    deva: "माफ़ कीजिए, गलती से call लग गया। आपका दिन अच्छा रहे।"
+    english: "Sorry, this call reached you by mistake. Have a good day."
+
+  silence_first:
+    roman: "Kya aap mujhe sun pa rahe hain?"
+    deva: "क्या आप मुझे सुन पा रहे हैं?"
+    english: "Can you hear me?"
+
+  silence_second:
+    roman: "Lagta hai awaaz nahi aa rahi, hum baad mein call karenge."
+    deva: "लगता है आवाज़ नहीं आ रही, हम बाद में call करेंगे।"
+    english: "It looks like the line isn't coming through — we'll call back later."
+
+  deflect_medical:
+    roman: "Is baare mein doctor hi sahi bata payenge. Main aapka sawaal team tak {bhej_rahi}."
+    deva: "इस बारे में doctor ही सही बता पाएंगे। मैं आपका सवाल team तक {bhej_rahi}।"
+    english: "The doctor will be able to answer that properly. I'll pass your question to the team."
+
+  deflect_billing:
+    roman: "Billing team hi exact jaankari de payegi, main unhe aapka sawaal {bhej_rahi}."
+    deva: "Billing team ही exact जानकारी दे पाएगी, मैं उन्हें आपका सवाल {bhej_rahi}।"
+    english: "The billing team will have the exact details — I'll send them your question."
+
+  wants_human:
+    roman: "Zaroor, main hospital team se aapko callback {karwati}. Kab theek rahega?"
+    deva: "ज़रूर, मैं hospital team से आपको callback {karwati}। कब ठीक रहेगा?"
+    english: "Of course — I'll arrange a callback from the hospital team. When would work for you?"
+
+  other_language:
+    roman: "Maaf kijiye, main abhi Hindi aur English mein baat kar {kar_sakti}. Kya hum Hindi mein baat kar sakte hain?"
+    deva: "माफ़ कीजिए, मैं अभी Hindi और English में बात कर {kar_sakti}। क्या हम Hindi में बात कर सकते हैं?"
+    english: "I'm sorry, I can currently only speak Hindi and English. Could we continue in English?"
+
+  escalate_urgent_medical:
+    roman: "Aapne jo bataya woh zaroori lag raha hai. Main doctor nahi hoon aur medical salah nahi {deti}. Agar abhi takleef zyada hai, toh kripya turant ek ek do ya ek shunya aath par call karein, ya nazdiki emergency mein jaayein. Main hospital team ko abhi yeh jaankari {bhej_rahi}."
+    deva: "आपने जो बताया वो ज़रूरी लग रहा है। मैं doctor नहीं हूँ और medical सलाह नहीं {deti}। अगर अभी तकलीफ़ ज़्यादा है, तो कृपया तुरंत एक एक दो या एक शून्य आठ पर call करें, या नज़दीकी emergency में जाएं। मैं hospital team को अभी यह जानकारी {bhej_rahi}।"
+    english: "What you've described sounds urgent. I'm not a doctor and can't give medical advice. If you're in significant discomfort right now, please call one one two or one zero eight immediately, or go to your nearest emergency room. I'm passing this to the hospital team right now."
+
+  escalate_urgent_medical_followup:
+    roman: "Kya aap chahenge ki hospital se koi aapko abhi call kare?"
+    deva: "क्या आप चाहेंगे कि hospital से कोई आपको अभी call करे?"
+    english: "Would you like someone from the hospital to call you right now?"
+
+  escalate_urgent_self_harm:
+    roman: "Aapne jo share kiya uske liye shukriya, aap akele nahi hain. Tele-MANAS helpline ek chaar chaar ek chhah par muft aur chaubees ghante baat ho sakti hai. Agar aap abhi khatre mein hain toh ek ek do par call karein."
+    deva: "आपने जो share किया उसके लिए शुक्रिया, आप अकेले नहीं हैं। Tele-MANAS helpline एक चार चार एक छह पर मुफ़्त और चौबीस घंटे बात हो सकती है। अगर आप अभी ख़तरे में हैं तो एक एक दो पर call करें।"
+    english: "Thank you for sharing that — you're not alone. The Tele-MANAS helpline at one four four one six is free and available twenty-four hours. If you're in immediate danger, please call one one two."
+
+  escalate_urgent_self_harm_followup:
+    roman: "Kya main hospital team se aapko abhi call karwaun?"
+    deva: "क्या मैं hospital team से आपको अभी call करवाऊं?"
+    english: "Would you like me to arrange a call from the hospital team right now?"
+
+  escalate_urgent_abuse:
+    roman: "Yeh bahut gambhir baat hai, aur mujhe khed hai ki aapke saath aisa hua. Main ise seedha hospital ki senior grievance team tak {pahuncha_rahi}. {sla_sentence}"
+    deva: "यह बहुत गंभीर बात है, और मुझे खेद है कि आपके साथ ऐसा हुआ। मैं इसे सीधा hospital की senior grievance team तक {pahuncha_rahi}। {sla_sentence}"
+    english: "This is very serious, and I'm sorry this happened to you. I'm escalating this directly to the hospital's senior grievance team. {sla_sentence}"
+
+  escalate_urgent_threat:
+    roman: "Main samajh sakti hoon aap bahut naraz hain. Main aapki shikayat abhi senior team tak {bhej_rahi}."
+    deva: "मैं समझ सकती हूँ आप बहुत नाराज़ हैं। मैं आपकी शिकायत अभी senior team तक {bhej_rahi}।"
+    english: "I understand you're very upset. I'm passing your complaint to the senior team right now."
+
+  escalate_standard:
+    roman: "Yeh zaroori baat hai, main ise team tak {bhej_rahi}."
+    deva: "यह ज़रूरी बात है, मैं इसे team तक {bhej_rahi}।"
+    english: "This is important — I'm passing it to the team."

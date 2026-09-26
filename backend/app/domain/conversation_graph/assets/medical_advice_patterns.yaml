@@ -1,0 +1,14 @@
+# Medical-advice patterns (PRD v2 §9.5). Any agent reply matching one of these is replaced by the
+# FIXED medical deflection (`scripts.yaml`'s `deflect_medical`) — the agent must never diagnose,
+# dose, or reassure clinically (CLAUDE.md "never do" list).
+patterns:
+  - "\\bmg\\b"
+  - "\\btablet\\b"
+  - "dawai\\s*lijiye"
+  - "dawai\\s*le\\s*lijiye"
+  - "aap\\s*ko\\s*.*\\s*hai\\b"        # "aapko X hai" - diagnosis-shaped phrasing
+  - "chinta\\s*ki\\s*baat\\s*nahi"
+  - "\\bdose\\b"
+  - "\\bprescription\\b"
+  - "take\\s*this\\s*medicine"
+  - "\\bdiagnos"
