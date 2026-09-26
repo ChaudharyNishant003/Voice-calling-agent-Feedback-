@@ -10,10 +10,12 @@ tenant, no-login local demo would be pure boilerplate with no actual isolation b
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,6 +31,8 @@ from app.services import (
     demo_conversation_service,
     demo_playground_service,
     demo_settings_service,
+    pfa_call_service,
+    pfa_results_service,
     provider_settings_service,
 )
 from app.services.demo_conversation_service import DemoProviderNotConfiguredError
@@ -71,40 +75,89 @@ class DemoSettingsResponse(BaseModel):
     hospital_name: str
     agent_name: str
     voice_gender: str
+    hospital_phone: str | None
+    escalation_sla_text: str | None
+    tts_script: str
 
 
 class SaveDemoSettingsRequest(BaseModel):
     hospital_name: str
     agent_name: str
     voice_gender: Literal["female", "male"]
+    hospital_phone: str | None = None
+    escalation_sla_text: str | None = None
+    tts_script: Literal["devanagari", "roman"] = "devanagari"
 
 
 class StartCallRequest(BaseModel):
     provider: Literal["gemini", "openai"]
+    patient_first_name: str
+    patient_phone: str | None = None
+    visit_type: Literal["OPD", "IPD", "DIAGNOSTICS", "EMERGENCY"]
+    visit_date: date
+    department: str | None = None
+    doctor_name: str | None = None
+    patient_age: int | None = None
 
 
-class StartCallResponse(BaseModel):
+class ConversationTurnResponse(BaseModel):
     call_id: str
-    greeting_text: str
-    hospital_name: str
-    agent_name: str
-    voice_gender: str
+    display_text: str
+    speech_text: str
+    speech_lang: str
+    node: str
+    ended: bool
+    call_outcome: str | None
+    escalated: bool
 
 
 class SubmitTurnRequest(BaseModel):
     provider: Literal["gemini", "openai"]
-    text: str
+    type: Literal["utterance", "silence", "stt_error"] = "utterance"
+    text: str | None = None
 
 
-class TurnResponse(BaseModel):
-    response_text: str
-    detected_language: str
-    locked_language: str
-    switched_language: bool
-    topics: list[str]
-    next_action: str
-    end_call: bool
-    summary: str | None
+class ResultListItemResponse(BaseModel):
+    call_id: str
+    started_at: str | None
+    ended_at: str | None
+    patient_first_name: str | None
+    visit_type: str
+    department: str | None
+    outcome: str | None
+    rating: int | None
+    severity_max: str | None
+    complaint_count: int
+    escalated: bool
+
+
+class ResultDetailResponse(BaseModel):
+    call_id: str
+    patient_first_name: str | None
+    visit_type: str
+    visit_date: str
+    department: str | None
+    doctor_name: str | None
+    outcome: str | None
+    respondent_type: str
+    language_mode: str | None
+    rating: int | None
+    rating_inferred: bool
+    topics: list[dict[str, object]]
+    complaints: list[dict[str, object]]
+    escalations: list[dict[str, object]]
+    transcript: list[dict[str, str]]
+
+
+class EscalationResponse(BaseModel):
+    id: str
+    call_id: str
+    type: str
+    category: str
+    triggered_by: str
+    status: str
+    created_at: str
+    acknowledged_at: str | None
 
 
 class TimelineEventResponse(BaseModel):
@@ -302,7 +355,12 @@ async def get_demo_settings(
 ) -> DemoSettingsResponse:
     row = await demo_settings_service.get_settings(session)
     return DemoSettingsResponse(
-        hospital_name=row.hospital_name, agent_name=row.agent_name, voice_gender=row.voice_gender
+        hospital_name=row.hospital_name,
+        agent_name=row.agent_name,
+        voice_gender=row.voice_gender,
+        hospital_phone=row.hospital_phone,
+        escalation_sla_text=row.escalation_sla_text,
+        tts_script=row.tts_script,
     )
 
 
@@ -316,23 +374,46 @@ async def save_demo_settings(
         hospital_name=body.hospital_name,
         agent_name=body.agent_name,
         voice_gender=body.voice_gender,
+        hospital_phone=body.hospital_phone,
+        escalation_sla_text=body.escalation_sla_text,
+        tts_script=body.tts_script,
     )
     return DemoSettingsResponse(
-        hospital_name=row.hospital_name, agent_name=row.agent_name, voice_gender=row.voice_gender
+        hospital_name=row.hospital_name,
+        agent_name=row.agent_name,
+        voice_gender=row.voice_gender,
+        hospital_phone=row.hospital_phone,
+        escalation_sla_text=row.escalation_sla_text,
+        tts_script=row.tts_script,
     )
 
 
 @router.post("/calls")
 async def start_call(
     body: StartCallRequest, session: AsyncSession = Depends(get_superadmin_db_session)
-) -> StartCallResponse:
-    result = await demo_conversation_service.start_call(session, provider=body.provider)
-    return StartCallResponse(
+) -> ConversationTurnResponse:
+    result = await pfa_call_service.start_call(
+        session,
+        pfa_call_service.StartCallInput(
+            provider=body.provider,
+            patient_first_name=body.patient_first_name,
+            patient_phone=body.patient_phone,
+            visit_type=body.visit_type,
+            visit_date=body.visit_date,
+            department=body.department,
+            doctor_name=body.doctor_name,
+            patient_age=body.patient_age,
+        ),
+    )
+    return ConversationTurnResponse(
         call_id=str(result.call_id),
-        greeting_text=result.greeting_text,
-        hospital_name=result.hospital_name,
-        agent_name=result.agent_name,
-        voice_gender=result.voice_gender,
+        display_text=result.display_text,
+        speech_text=result.speech_text,
+        speech_lang=result.speech_lang,
+        node=result.node,
+        ended=result.ended,
+        call_outcome=result.call_outcome,
+        escalated=result.escalated,
     )
 
 
@@ -341,20 +422,20 @@ async def submit_turn(
     call_id: UUID,
     body: SubmitTurnRequest,
     session: AsyncSession = Depends(get_superadmin_db_session),
-) -> TurnResponse:
+) -> ConversationTurnResponse:
     registry = await _build_llm_registry(session, [body.provider])
-    result = await demo_conversation_service.submit_turn(
-        session, registry, call_id, body.provider, body.text
+    result = await pfa_call_service.submit_turn(
+        session, registry, call_id, body.provider, body.type, body.text
     )
-    return TurnResponse(
-        response_text=result.response_text,
-        detected_language=result.detected_language,
-        locked_language=result.locked_language,
-        switched_language=result.switched_language,
-        topics=result.topics,
-        next_action=result.next_action,
-        end_call=result.end_call,
-        summary=result.summary,
+    return ConversationTurnResponse(
+        call_id=str(result.call_id),
+        display_text=result.display_text,
+        speech_text=result.speech_text,
+        speech_lang=result.speech_lang,
+        node=result.node,
+        ended=result.ended,
+        call_outcome=result.call_outcome,
+        escalated=result.escalated,
     )
 
 
@@ -362,7 +443,7 @@ async def submit_turn(
 async def end_call(
     call_id: UUID, session: AsyncSession = Depends(get_superadmin_db_session)
 ) -> dict[str, str]:
-    await demo_conversation_service.end_call(session, call_id)
+    await pfa_call_service.end_call(session, call_id)
     return {"status": "ended"}
 
 
@@ -375,6 +456,131 @@ async def get_call_events(
         TimelineEventResponse(event_id=e.event_id, ts=e.ts.isoformat(), type=e.type, data=e.data)
         for e in events
     ]
+
+
+@router.get("/results")
+async def list_results(
+    session: AsyncSession = Depends(get_superadmin_db_session),
+) -> list[ResultListItemResponse]:
+    rows = await pfa_results_service.list_results(session)
+    return [
+        ResultListItemResponse(
+            call_id=str(r.call_id),
+            started_at=r.started_at.isoformat() if r.started_at else None,
+            ended_at=r.ended_at.isoformat() if r.ended_at else None,
+            patient_first_name=r.patient_first_name,
+            visit_type=r.visit_type,
+            department=r.department,
+            outcome=r.outcome,
+            rating=r.rating,
+            severity_max=r.severity_max,
+            complaint_count=r.complaint_count,
+            escalated=r.escalated,
+        )
+        for r in rows
+    ]
+
+
+@router.get("/results/export.csv")
+async def export_results_csv(
+    session: AsyncSession = Depends(get_superadmin_db_session),
+) -> StreamingResponse:
+    import csv
+    import io
+
+    rows = await pfa_results_service.list_results(session)
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(
+        [
+            "call_id", "started_at", "ended_at", "patient_first_name", "visit_type",
+            "department", "outcome", "rating", "severity_max", "complaint_count", "escalated",
+        ]
+    )
+    for r in rows:
+        writer.writerow(
+            [
+                str(r.call_id),
+                r.started_at.isoformat() if r.started_at else "",
+                r.ended_at.isoformat() if r.ended_at else "",
+                r.patient_first_name or "",
+                r.visit_type,
+                r.department or "",
+                r.outcome or "",
+                r.rating if r.rating is not None else "",
+                r.severity_max or "",
+                r.complaint_count,
+                r.escalated,
+            ]
+        )
+    buffer.seek(0)
+    return StreamingResponse(
+        iter([buffer.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=demo_results.csv"},
+    )
+
+
+@router.get("/results/{call_id}")
+async def get_result_detail(
+    call_id: UUID, session: AsyncSession = Depends(get_superadmin_db_session)
+) -> ResultDetailResponse:
+    detail = await pfa_results_service.get_result_detail(session, call_id)
+    return ResultDetailResponse(
+        call_id=str(detail.call_id),
+        patient_first_name=detail.patient_first_name,
+        visit_type=detail.visit_type,
+        visit_date=detail.visit_date,
+        department=detail.department,
+        doctor_name=detail.doctor_name,
+        outcome=detail.outcome,
+        respondent_type=detail.respondent_type,
+        language_mode=detail.language_mode,
+        rating=detail.rating,
+        rating_inferred=detail.rating_inferred,
+        topics=detail.topics,
+        complaints=detail.complaints,
+        escalations=detail.escalations,
+        transcript=[{"speaker": s, "text": t} for s, t in detail.transcript],
+    )
+
+
+@router.get("/escalations")
+async def list_escalations(
+    status: Literal["open", "acknowledged", "closed"] | None = None,
+    session: AsyncSession = Depends(get_superadmin_db_session),
+) -> list[EscalationResponse]:
+    rows = await pfa_results_service.list_escalations(session, status=status)
+    return [
+        EscalationResponse(
+            id=str(e.id),
+            call_id=str(e.call_id),
+            type=e.type,
+            category=e.category,
+            triggered_by=e.triggered_by,
+            status=e.status,
+            created_at=e.created_at.isoformat(),
+            acknowledged_at=e.acknowledged_at.isoformat() if e.acknowledged_at else None,
+        )
+        for e in rows
+    ]
+
+
+@router.post("/escalations/{escalation_id}/ack")
+async def acknowledge_escalation(
+    escalation_id: UUID, session: AsyncSession = Depends(get_superadmin_db_session)
+) -> EscalationResponse:
+    e = await pfa_results_service.acknowledge_escalation(session, escalation_id)
+    return EscalationResponse(
+        id=str(e.id),
+        call_id=str(e.call_id),
+        type=e.type,
+        category=e.category,
+        triggered_by=e.triggered_by,
+        status=e.status,
+        created_at=e.created_at.isoformat(),
+        acknowledged_at=e.acknowledged_at.isoformat() if e.acknowledged_at else None,
+    )
 
 
 # --- Playground: manual, per-stage, per-model pipeline inspection (docs/11_BUILD_PLAN.md's Demo

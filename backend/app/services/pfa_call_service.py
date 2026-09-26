@@ -268,11 +268,14 @@ async def _call_node_llm(
     repair_hint: str | None,
     registry: AdapterRegistry[LLMAdapter],
     provider: str,
-) -> tuple[NodeContract, tuple[Event, ...]]:
+) -> tuple[NodeContract, tuple[Event, ...], bool]:
     """Mirrors `demo_conversation_service._call_llm_with_retry`: one retry, then a FIXED-line
     fallback contract on a second failure (PRD §8 "Validation & failure handling") — the lexicon
     safety scan has already run by the time this is called, so safety is never lost to an LLM
-    failure (CLAUDE.md rule 3).
+    failure (CLAUDE.md rule 3). The third return value is True only for that fallback path — the
+    caller must speak `_CONTRACT_FALLBACK_TEXT` verbatim in that case rather than letting the
+    normal FIXED-script-wins rule silently swap in whatever line the (unchanged) current node
+    happens to own, which would make the repair prompt invisible to the patient.
     """
     ctx = NodeTurnContext(
         node=node,
@@ -302,7 +305,7 @@ async def _call_node_llm(
             events.append(
                 ("LLM_RESPONSE", {"node": node.value, "proposed_next": contract.proposed_next})
             )
-            return contract, tuple(events)
+            return contract, tuple(events), False
         except pybreaker.CircuitBreakerError as exc:
             events.append(("ERROR", {"attempt": attempt, "message": f"circuit breaker: {exc}"}))
         except AdapterError as exc:
@@ -324,7 +327,7 @@ async def _call_node_llm(
         language_detected=fallback_language,
         proposed_next=node.value,
     )
-    return fallback, tuple(events)
+    return fallback, tuple(events), True
 
 
 def _state_summary(state: CallState) -> str:
@@ -541,7 +544,7 @@ async def process_turn(
             new_state, persona, _render(new_state, persona, "close_short"), events=tuple(events)
         )
 
-    contract, llm_events = await _call_node_llm(
+    contract, llm_events, contract_failed = await _call_node_llm(
         node=state.node,
         persona=persona,
         state=state,
@@ -552,6 +555,12 @@ async def process_turn(
         provider=provider,
     )
     events.extend(llm_events)
+
+    if contract_failed:
+        # Speak the FIXED repair line verbatim — bypassing the normal FIXED-script-wins rule,
+        # which would otherwise silently replace it with whatever line the (unchanged, since
+        # proposed_next self-loops) current node owns, making the repair invisible to the patient.
+        return _finalize(state, persona, contract.reply_text, events=tuple(events))
 
     state, is_other_language = _apply_language(state, contract)
     if is_other_language:
@@ -988,7 +997,7 @@ def _serialize_state(state: CallState) -> dict[str, object]:
     }
 
 
-def _deserialize_state(data: dict[str, object]) -> CallState:
+def deserialize_state(data: dict[str, object]) -> CallState:
     # `Any`, deliberately: this whole function's job is un-typed JSON -> the real dataclass, so
     # every value here is inherently unchecked until the enum/dataclass constructors below validate
     # it. Keeping `_get` at `object` just forces a `type: ignore` at every call site instead of
@@ -1140,6 +1149,7 @@ async def start_call(session: AsyncSession, data: StartCallInput) -> TurnApiResu
         phone_hash=phone_hash_bytes,
         phone_e164_enc=encrypt(phone_e164, dek),
         phone_last4=phone_e164[-4:],
+        first_name_enc=encrypt(data.patient_first_name, dek),
     )
     session.add(patient)
     await session.flush()
@@ -1207,7 +1217,7 @@ async def start_call(session: AsyncSession, data: StartCallInput) -> TurnApiResu
     )
 
 
-async def _load_history(session: AsyncSession, call: Call) -> list[tuple[str, str]]:
+async def load_history(session: AsyncSession, call: Call) -> list[tuple[str, str]]:
     rows = list(
         (
             await session.scalars(
@@ -1237,12 +1247,23 @@ async def submit_turn(
         raise DemoCallNotFoundError("PFA-DEMO-006", message="Demo call not found.")
     if call.status != CallStatus.in_progress:
         raise DemoCallAlreadyEndedError("PFA-DEMO-007", message="This demo call has already ended.")
+    if not registry.has(provider):
+        # Checked here, before any processing, same rationale as demo_conversation_service's own
+        # submit_turn: a missing key is a setup problem, not a transient runtime failure, so it
+        # doesn't belong in _call_node_llm's retry/fallback path.
+        raise demo_conversation_service.DemoProviderNotConfiguredError(
+            "PFA-DEMO-008",
+            message=(
+                f"{provider} isn't configured yet. Save and test a working API key for it in "
+                "Settings, then try again."
+            ),
+        )
 
     settings = await demo_settings_service.get_settings(session)
     visit = await session.get(Visit, call.visit_id)
     assert visit is not None  # a call always has the visit created alongside it in start_call
 
-    state = _deserialize_state(call.state_snapshot or {})
+    state = deserialize_state(call.state_snapshot or {})
     persona = _persona_from_settings(
         settings,
         first_name="",  # not needed after the greeting; scripts referencing {first_name} are only
@@ -1251,7 +1272,7 @@ async def submit_turn(
         locked_family=state.language.locked,
     )
 
-    history = await _load_history(session, call)
+    history = await load_history(session, call)
     next_index = len(history)
     if event_kind == "utterance":
         await _persist_transcript_turn(
@@ -1455,7 +1476,7 @@ async def end_call(session: AsyncSession, call_id: UUID) -> None:
     if call is None:
         raise DemoCallNotFoundError("PFA-DEMO-006", message="Demo call not found.")
     if call.status == CallStatus.in_progress:
-        state = _deserialize_state(call.state_snapshot or {})
+        state = deserialize_state(call.state_snapshot or {})
         state = replace(state, ended=True, call_outcome=state.call_outcome or CallOutcome.abandoned)
         call.status = CallStatus.completed
         call.ended_at = datetime.now(UTC)

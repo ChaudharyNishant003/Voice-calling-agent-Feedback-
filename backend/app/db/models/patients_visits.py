@@ -38,6 +38,8 @@ class Patient(Base):
     phone_hash: Mapped[bytes] = mapped_column(LargeBinary)
     phone_e164_enc: Mapped[bytes] = mapped_column(LargeBinary)
     phone_last4: Mapped[str] = mapped_column(CHAR(4))
+    # Added by migration 0017 (PRD v2 §11) — encrypted, nullable (existing patients never had one).
+    first_name_enc: Mapped[bytes | None] = mapped_column(LargeBinary)
     preferred_language: Mapped[str | None]
     opt_out: Mapped[bool] = mapped_column(default=False)
     opt_out_at: Mapped[datetime | None]

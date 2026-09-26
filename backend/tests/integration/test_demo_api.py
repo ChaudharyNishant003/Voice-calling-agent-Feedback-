@@ -29,6 +29,11 @@ _DEMO_ROUTES: list[tuple[str, str]] = [
     ("POST", "/api/v1/demo/calls/00000000-0000-7000-8000-000000000000/turns"),
     ("POST", "/api/v1/demo/calls/00000000-0000-7000-8000-000000000000/end"),
     ("GET", "/api/v1/demo/calls/00000000-0000-7000-8000-000000000000/events"),
+    ("GET", "/api/v1/demo/results"),
+    ("GET", "/api/v1/demo/results/export.csv"),
+    ("GET", "/api/v1/demo/results/00000000-0000-7000-8000-000000000000"),
+    ("GET", "/api/v1/demo/escalations"),
+    ("POST", "/api/v1/demo/escalations/00000000-0000-7000-8000-000000000000/ack"),
     ("POST", "/api/v1/demo/playground/steps/language-detection"),
     ("POST", "/api/v1/demo/playground/steps/topic-extraction"),
     ("POST", "/api/v1/demo/playground/steps/language-lock"),
@@ -38,12 +43,18 @@ _DEMO_ROUTES: list[tuple[str, str]] = [
     ("POST", "/api/v1/demo/playground/steps/response-generation"),
 ]
 
-_GOOD_TURN_DATA = {
-    "response": "Samajh gayi, dhanyavaad!",
-    "detected_language": "hi",
-    "topics": ["billing"],
-    "next_action": "follow_up",
-    "end_call": False,
+_START_CALL_BODY = {
+    "provider": "gemini",
+    "patient_first_name": "Ramesh",
+    "visit_type": "OPD",
+    "visit_date": "2026-09-20",
+}
+
+_GOOD_TURN_DATA: dict[str, object] = {
+    "reply_text": "Samajh gayi, dhanyavaad!",
+    "language_detected": "hinglish",
+    "proposed_next": "purpose_consent_time",
+    "intents": ["affirm"],
 }
 
 
@@ -71,7 +82,7 @@ async def client(configured_app: FastAPI) -> AsyncIterator[AsyncClient]:
 async def test_every_demo_route_404s_when_demo_mode_off(client: AsyncClient) -> None:
     # DEMO_MODE defaults to False — no `demo_mode_on` fixture here.
     for method, path in _DEMO_ROUTES:
-        body = {} if method in ("POST", "PUT") else None
+        body: dict[str, object] | None = {} if method in ("POST", "PUT") else None
         response = await client.request(method, path, json=body)
         assert response.status_code == 404, f"{method} {path} did not 404 with demo mode off"
 
@@ -110,12 +121,13 @@ async def test_submit_turn_without_a_configured_provider_returns_422(
     client: AsyncClient, demo_mode_on: None
 ) -> None:
     del demo_mode_on
-    start = await client.post("/api/v1/demo/calls", json={"provider": "gemini"})
+    start = await client.post("/api/v1/demo/calls", json=_START_CALL_BODY)
     assert start.status_code == 200
     call_id = start.json()["call_id"]
 
     response = await client.post(
-        f"/api/v1/demo/calls/{call_id}/turns", json={"provider": "gemini", "text": "hello"}
+        f"/api/v1/demo/calls/{call_id}/turns",
+        json={"provider": "gemini", "type": "utterance", "text": "hello"},
     )
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "PFA-DEMO-008"
@@ -129,11 +141,12 @@ async def test_full_call_happy_path_through_api(client: AsyncClient, demo_mode_o
             json={"api_key": "fake-key", "model": "gemini-3.8-flash"},
         )
 
-    start = await client.post("/api/v1/demo/calls", json={"provider": "gemini"})
+    start = await client.post("/api/v1/demo/calls", json=_START_CALL_BODY)
     assert start.status_code == 200
     body = start.json()
     call_id = body["call_id"]
-    assert body["greeting_text"]
+    assert body["display_text"]
+    assert body["node"] == "open_and_identify"
 
     with patch(
         "app.adapters.gemini.llm.GeminiLLM.complete",
@@ -141,13 +154,12 @@ async def test_full_call_happy_path_through_api(client: AsyncClient, demo_mode_o
     ):
         turn = await client.post(
             f"/api/v1/demo/calls/{call_id}/turns",
-            json={"provider": "gemini", "text": "Billing thodi confusing thi."},
+            json={"provider": "gemini", "type": "utterance", "text": "Haan ji, main Ramesh hoon"},
         )
     assert turn.status_code == 200
     turn_body = turn.json()
-    assert turn_body["response_text"] == _GOOD_TURN_DATA["response"]
-    assert turn_body["topics"] == ["billing"]
-    assert turn_body["end_call"] is False
+    assert turn_body["node"] == "purpose_consent_time"
+    assert turn_body["ended"] is False
 
     events = await client.get(f"/api/v1/demo/calls/{call_id}/events")
     assert events.status_code == 200
@@ -155,6 +167,14 @@ async def test_full_call_happy_path_through_api(client: AsyncClient, demo_mode_o
     assert "LLM_REQUEST" in event_types
     assert "LLM_RESPONSE" in event_types
     assert "ERROR" not in event_types
+
+    results = await client.get("/api/v1/demo/results")
+    assert results.status_code == 200
+    assert any(r["call_id"] == call_id for r in results.json())
+
+    detail = await client.get(f"/api/v1/demo/results/{call_id}")
+    assert detail.status_code == 200
+    assert detail.json()["patient_first_name"] == "Ramesh"
 
     end = await client.post(f"/api/v1/demo/calls/{call_id}/end")
     assert end.status_code == 200
@@ -169,21 +189,44 @@ async def test_malformed_llm_output_recovers_instead_of_crashing(
             "/api/v1/demo/providers/gemini/key",
             json={"api_key": "fake-key", "model": "gemini-3.8-flash"},
         )
-    start = await client.post("/api/v1/demo/calls", json={"provider": "gemini"})
+    start = await client.post("/api/v1/demo/calls", json=_START_CALL_BODY)
     call_id = start.json()["call_id"]
 
-    bad_result = _llm_result({"response": "bad", "detected_language": "not-a-real-language"})
+    bad_result = _llm_result({"reply_text": "bad", "detected_language": "not-a-real-language"})
     with patch(
         "app.adapters.gemini.llm.GeminiLLM.complete",
         new=AsyncMock(side_effect=[bad_result, bad_result]),
     ):
         turn = await client.post(
             f"/api/v1/demo/calls/{call_id}/turns",
-            json={"provider": "gemini", "text": "Kuch samajh nahi aaya."},
+            json={"provider": "gemini", "type": "utterance", "text": "Kuch samajh nahi aaya."},
         )
     assert turn.status_code == 200  # never a 500 — the call survives with a fallback response
-    assert "samajh nahi aaya" in turn.json()["response_text"]
+    assert "phir bata sakte hain" in turn.json()["display_text"]
 
     events = await client.get(f"/api/v1/demo/calls/{call_id}/events")
     error_events = [e for e in events.json() if e["type"] == "ERROR"]
     assert len(error_events) == 3
+
+
+async def test_escalations_list_and_ack_roundtrip(client: AsyncClient, demo_mode_on: None) -> None:
+    del demo_mode_on
+    start = await client.post("/api/v1/demo/calls", json=_START_CALL_BODY)
+    call_id = start.json()["call_id"]
+
+    turn = await client.post(
+        f"/api/v1/demo/calls/{call_id}/turns",
+        json={"provider": "gemini", "type": "utterance", "text": "Mujhe saans nahi aa rahi"},
+    )
+    assert turn.status_code == 200
+    assert turn.json()["escalated"] is True
+
+    open_escalations = await client.get("/api/v1/demo/escalations", params={"status": "open"})
+    assert open_escalations.status_code == 200
+    matching = [e for e in open_escalations.json() if e["call_id"] == call_id]
+    assert len(matching) == 1
+    escalation_id = matching[0]["id"]
+
+    ack = await client.post(f"/api/v1/demo/escalations/{escalation_id}/ack")
+    assert ack.status_code == 200
+    assert ack.json()["status"] == "acknowledged"
