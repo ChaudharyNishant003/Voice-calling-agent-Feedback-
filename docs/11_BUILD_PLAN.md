@@ -384,6 +384,36 @@ for a configured provider, leaking a raw `KeyError` instead of the catalogued er
 regression-tested — see the "fix: conversation-quality bugs found live-testing against real Gemini"
 commit for the full detail on each.
 
+**Phase 7 (40-scenario test harness) — done.** `backend/tests/scenarios/`: a YAML scenario schema
+(`models.py`), a deterministic `--mock-llm` stub adapter (`mock_llm.py`), deterministic pass/fail
+assertions against a call's final outcome/rating/complaints/escalations (`assertions.py`), shared
+drive logic reused by both run modes (`runner_core.py`), and a real-API sample CLI
+(`runner.py`, run manually — `python -m tests.scenarios.runner --ids S01,S09,...` or `--sample N`)
+that reuses each scenario's own scripted patient turns against the real Gemini adapter instead of a
+second simulator+judge LLM pair (see `runner.py`'s module docstring for the full reasoning: mostly
+avoiding a test-only prompt schema living in `app/adapters/`, plus the existing deterministic
+assertions already being a stricter gate than an LLM judge's rubric for policy/safety-driven
+outcomes). 40 scenarios in `cases/*.yaml` cover every node-graph edge, all 8 safety categories
+(keyword- and LLM-flag-triggered), S0-S4 severity routing, every policy pre-check (opt-out/
+wants-human/repeat-request), silence/stt_error repair, caregiver/proxy respondent, topic/complaint
+dedup, readback correction, the 20-turn ceiling, and recovery from an illegal (hallucinated) node
+proposal. `tests/integration/test_scenario_harness.py` runs all 40 in mock mode as part of the
+regular suite (41 passed, ruff clean).
+
+Scenario content is this session's own design, not verbatim PRD text — the source PRD document was
+supplied out-of-repo and wasn't available to reproduce faithfully; the scenarios instead were built
+directly from reading `graph.py`'s edge table, `policy.py`/`safety.py`/`severity.py`/`repair.py`'s
+actual logic, and `pfa_call_service.py`'s turn-by-turn LLM-invocation rules, so every turn's canned
+contract lines up with exactly when the engine really calls the LLM.
+
+Building the harness against the real engine (not just reasoning about it) surfaced one real bug on
+the first run: `_handle_silence`'s end-call branch set `call_outcome=CallOutcome.callback` and
+`ended=True` but never set `node=Node.callback` — unlike every other path that reaches the callback
+outcome (`wants_human`, repeat-request give-up, `stt_error` give-up), which all set the node
+explicitly. A call ending via two consecutive silences left the node chip showing whatever node the
+call happened to be on, not `callback`. Fixed to match the other paths; the scenario (`S15`) now
+encodes the correct behaviour as a regression check.
+
 **Phase 8 (CSV-ingested-visit call start) — done.** `pfa_call_service.start_call_from_visit(session,
 visit_id, provider, patient_first_name)` starts a call against a `Visit` row that already exists
 (e.g. from the Sprint 1 CSV ingestion), instead of creating a fresh `Patient`+`Visit` per call the
@@ -399,7 +429,10 @@ test driving two consecutive calls against the same visit had to `end_call()` th
 behaviour, so the test was fixed, not the constraint. 396 tests green (adds 10 for this feature);
 ruff/mypy --strict/lint-imports/eslint/tsc clean.
 
-**Not yet built:** the 40-scenario harness, README/final report.
+**Phase 9 (README & final report) — done.** README rewritten for the node-graph engine (consent/
+caregiver/safety/results/escalations/CSV-start walkthrough, a node-graph diagram, how to add a
+scenario, how to edit the fixed scripts/safety lexicon). See `docs/PRD_V2_FINAL_REPORT.md` for the
+full phase-by-phase report.
 
 ## Sprint 2 — Orchestration & telephony
 - [ ] **S2.1 Contact window + retry policy** (pure) with exhaustive boundary tests.

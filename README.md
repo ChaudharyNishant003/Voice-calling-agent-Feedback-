@@ -4,8 +4,12 @@ A multilingual (English + Hindi + Hinglish) patient-listening system for Indian 
 [`CLAUDE.md`](CLAUDE.md) and [`docs/`](docs/) for the full product/architecture spec.
 
 This README covers the **Demo MVP**: a browser-based, no-login voice feedback conversation you can
-run yourself in Chrome to try the product end to end. The full telephony/production system
-(Sprints 1–8, [`docs/11_BUILD_PLAN.md`](docs/11_BUILD_PLAN.md)) is being built alongside it.
+run yourself in Chrome to try the product end to end. It now runs on the **node-graph conversation
+engine** (PRD v2 — see `docs/PRD_V2_FINAL_REPORT.md` for the full report): a fixed set of
+conversation states with deterministic code owning every transition, consent check, and safety
+escalation; the LLM only proposes within a node, never decides on its own (CLAUDE.md rule 3). The
+full telephony/production system (Sprints 1–8, [`docs/11_BUILD_PLAN.md`](docs/11_BUILD_PLAN.md)) is
+being built alongside it.
 
 ## Prerequisites
 
@@ -64,27 +68,129 @@ closest one available rather than fail.
 
 ### Start a call
 
-Back on the main page, pick a connected provider and click **Start Demo Call**. Allow microphone
-access when Chrome asks. The agent greets you in Hinglish; reply out loud, or type in the text box
-if you'd rather not use the mic (or if speech recognition isn't available) — both go through the
-exact same backend conversation engine.
+Fill in the patient/visit form (name, phone, visit type, date, department, doctor) and click
+**Start Demo Call** — or, if you've already run a CSV ingestion (Sprint 1), use the **"start from an
+already-ingested visit"** card instead and paste a `visit_id`; this reuses that visit's existing
+`Patient`/`Visit` rows rather than creating new ones, and correctly computes the next call attempt
+number. Allow microphone access when Chrome asks. Reply out loud, or type in the text box if you'd
+rather not use the mic (or if speech recognition isn't available) — both go through the exact same
+backend conversation engine.
 
-A short script to try the language-switching behavior (spec-verified):
+A short script to try the conversation graph end to end:
 
-1. Reply in Hindi/Hinglish — the conversation locks to that.
-2. Reply once in English — it stays locked to Hindi/Hinglish (a single off-family reply doesn't
-   switch it).
-3. Reply in English three times in a row — *now* it switches to English.
-4. Say "Hindi mein baat karo" — it switches back immediately, no waiting for a streak.
+1. Confirm your identity ("haan main hi bol raha hoon") — the agent asks consent to record before
+   any survey question.
+2. Give consent, then describe the visit. Rate it, mention one thing that could be better, then say
+   there's nothing else.
+3. The agent reads back a summary and closes — no review/referral ask, ever (CLAUDE.md rule 5).
 
-The call closes itself after enough feedback is collected (or after 8 turns regardless, as a hard
-ceiling) — you don't need to do anything to end it, though an **End Call** button is there too.
+Other paths worth trying: say "mujhe insaan se baat karni hai" (routes straight to a callback,
+bypassing the LLM entirely — a deterministic policy check, not an LLM classification); say you're
+someone else's caregiver ("main beta hoon unka") to see the proxy-respondent path; or mention a
+safety keyword (e.g. "seene mein dard ho raha hai" — chest pain) to see the safety-escalation script
+fire immediately, skipping the LLM call entirely for latency.
+
+The call closes itself once the interview is complete (or after 20 agent turns regardless, as a
+hard ceiling) — you don't need to do anything to end it, though an **End Call** button is there too.
+
+### Results & escalations
+
+**Results** (`/demo/results`) lists every finished call — outcome, rating, complaint count, max
+severity — with a detail page per call and a CSV export. **Escalations** (`/demo/escalations`) is
+the queue of `PfaEscalation` rows a safety-triggered or S3+ complaint produces, with an acknowledge
+action.
 
 ### Debug a call
 
 Every call has a **Debug** link (top right once a call is running) showing the full event
-timeline: call/session state, provider/model, locked language, and every step with its
-input/output/timestamps. If a step fails, it shows up in red so it's obvious what broke.
+timeline: node transitions, guard events, safety triggers, provider/model, locked language, and
+every step with its input/output/timestamps. If a step fails, it shows up in red so it's obvious
+what broke.
+
+## The conversation graph
+
+Fixed nodes, deterministic edges (`backend/app/domain/conversation_graph/graph.py`). The LLM
+proposes a `proposed_next` node each turn; `graph.next_node()` only accepts it if it's a legal edge
+from the current node — an illegal (e.g. hallucinated) proposal is rejected and logged, and the call
+just stays on its current node instead of breaking.
+
+```mermaid
+flowchart TD
+    A[open_and_identify] -->|affirm| C[purpose_consent_time]
+    A -->|caregiver| B[caregiver]
+    A -->|wrong_person| CW[close_wrong]
+    A -->|busy / opt_out| CB1[callback / opt_out]
+    B -->|accompanied| C
+    B -->|not_accompanied| CB1
+    C -->|affirm| D[open_experience]
+    C -->|refuses_recording| CLOSE[close]
+    D --> E[overall_rating]
+    D --> F[probe_topics]
+    E --> F
+    E --> G[anything_else]
+    F -->|complaint mentioned| H[complaint_detail]
+    F --> E
+    F --> G
+    H --> SG[severity_gate]
+    SG -->|S0-S2| F
+    SG -->|S3| ES[escalate_standard] --> F
+    SG -->|S4| EU[escalate_urgent]
+    G --> H
+    G --> I[readback_and_next_steps]
+    I --> H
+    I --> CLOSE
+    EU --> CLOSE
+
+    %% Global: a safety-lexicon hit or the LLM's own safety flag jumps to escalate_urgent
+    %% from ANY node, bypassing the node LLM entirely for that turn.
+```
+
+A safety-lexicon hit on the patient's raw text, or the LLM's own `safety.flag`, escalates to
+`escalate_urgent` from **any** node — that's a global interrupt (PRD §7.2), not a graph edge, which
+is why it isn't drawn as one above. Policy pre-checks (opt-out / wants-human / repeat-request) work
+the same way: they're matched on the raw text before the node LLM is even called, from any node.
+
+## How to add a scenario
+
+Scenarios live in `backend/tests/scenarios/cases/*.yaml` and run as part of the regular suite
+(`pytest tests/integration/test_scenario_harness.py`) using a deterministic mock LLM — no API key
+needed. To add one:
+
+1. Copy an existing case close to what you want (e.g. `S17.yaml` for a simple complaint, `S26.yaml`
+   for a safety escalation) and give it a new `id`.
+2. Write the `turns` list: each turn is the patient's actual text (which real policy/safety checks
+   run against) plus an optional `contract` — the canned `NodeContract` fields to hand back **only
+   on turns where the engine actually calls the LLM**. Whether a turn calls the LLM depends on
+   `pfa_call_service.process_turn`'s own short-circuits (a safety keyword hit, an opt-out/
+   wants-human policy match, `event_kind: silence`/`stt_error`, or the deterministic
+   `escalate_urgent` follow-up) — get this wrong and `mock_llm.ScenarioLLM` raises a clear error
+   naming the mismatch rather than silently misbehaving.
+3. Write an `expect` block (see `assertions.py` for every supported key: `outcome`, `final_node`,
+   `rating`/`min_rating`, `complaint_count`/`min_complaint_count`, `escalation_count`/
+   `min_escalation_count`, `severity_max`, `topic_count`/`min_topic_count`, `respondent_type`,
+   `language_mode`).
+4. Run `pytest tests/integration/test_scenario_harness.py -k <your id> -q` to check it.
+
+To run a small sample against the **real** Gemini API instead (uses your saved Settings key):
+`docker exec pfa-auth-check python -m tests.scenarios.runner --ids S01,S26,S36` — writes a report to
+`backend/tests/scenarios/reports/`.
+
+## How to edit the fixed scripts / safety lexicon
+
+- **Fixed script lines** (consent line, escalation scripts, closing lines, etc. — anything the LLM
+  never writes): `backend/app/domain/conversation_graph/assets/scripts.yaml`. Each key under
+  `scripts` has a `roman` (Hinglish), `deva` (Devanagari), and `english` variant, plus gendered
+  `{tokens}` resolved from `tokens` (e.g. `{bol_rahi}`). Restart `pfa-api-1` after editing —
+  `prompts.py`'s loader is `@cache`d in-process.
+- **Safety lexicon**: `backend/app/domain/conversation_graph/assets/safety_lexicon.yaml`. One
+  category (`medical_now`, `self_harm`, `abuse`, `sexual_misconduct`, `privacy`, `discrimination`,
+  `threat`, `medication_error`) → a list of regex alternations, matched case-insensitively with
+  whitespace boundaries (not `\b`, which incorrectly splits Devanagari words ending in a matra).
+  False positives are fine; false negatives aren't — prefer a broader pattern.
+- **Per-node LLM prompts**: `backend/app/domain/conversation_graph/assets/node_prompts/*.md`, one
+  per node the LLM actually reasons in (pure-FIXED nodes never call it). Each states the node's
+  legal `proposed_next` values explicitly — the real Gemini API has hallucinated invalid node names
+  live, so this isn't optional.
 
 ## Troubleshooting
 
