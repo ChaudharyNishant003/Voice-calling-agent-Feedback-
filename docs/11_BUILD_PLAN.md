@@ -352,10 +352,39 @@ has no self-loop for it); the `ESCALATE_URGENT` medical/self-harm follow-up ("wo
 callback now?") is answered with a small deterministic yes/no check instead of a tenth LLM prompt
 file, since the call proceeds to `CLOSE` either way.
 
-**Not yet built:** migration `0016` and real persistence (`pfa_call_state`, results/escalations
-tables — currently `process_turn`/`start_turn` are pure functions with no DB session), new API
-endpoints, resume-after-restart, dashboard wiring (patient form, results/escalations pages, debug
-additions), the 40-scenario harness, CSV-ingested-visit call start, README/final report.
+**Phase 5 (persistence & API) — done.** Migration `0016` (extends `demo_settings`/`visit_type`/
+`complaints`, adds `pfa_do_not_call`/`pfa_callbacks`/`pfa_escalations` with RLS) plus migration
+`0017` (`patients.first_name_enc` — the results page needed to show which patient a call is about,
+and `patients` had no name field at all by design; added the same way the phone number already is,
+encrypted at rest). `pfa_call_service.start_call/submit_turn/end_call` wire the Phase 4 engine to
+real persistence; `pfa_results_service.py` is the separate read-side (results list/detail/CSV
+export, escalations queue + acknowledge). Reused `Call.state_snapshot` instead of a new
+`pfa_call_state` table — same column/mechanism the old Demo MVP engine already used for
+resume-after-restart. Deferred escalation persistence to every turn it appears (not just at
+call-end) since a medical/self-harm escalation asks a follow-up question before the call actually
+ends — waiting for call-end would leave a live emergency unrecorded in the queue until the patient
+answered it. 386 tests green (migrations, persistence, API); ruff/mypy --strict/lint-imports clean.
+
+**Phase 6 (dashboard) — done.** Patient/visit form on `/demo`, node chip + escalation banner,
+`/demo/results` (list + detail) and `/demo/escalations` (queue + acknowledge), extended
+`/demo/settings`, `speech_lang`-driven STT/TTS + 7s silence detection in `useTurnController`.
+`/demo/debug` needed no changes — it already renders any `CallEvent` type generically, so the new
+engine's event types show up automatically.
+
+Driving full multi-turn calls through the actual dashboard against the real Gemini API (not just
+mock-LLM tests) surfaced five real conversation-quality bugs the mocks couldn't catch: none of the
+9 node prompts told the LLM the *exact* `proposed_next` node name to use (Gemini hallucinated
+"feedback_start", "confirm_visit" and self-looped on a clear "yes, this is Ramesh speaking");
+`identity_verified`/`respondent_type` were never actually set anywhere, so the pre-identity-
+disclosure guard fired on any later reply mentioning "doctor" for the rest of the call; topics and
+complaints both got duplicated across turns (the LLM re-reporting something still visible in its
+own recent-history window, and a resolved complaint becoming invisible to probe_topics' "don't
+re-raise it" instruction once `current_complaint_index` cleared); and `submit_turn` never checked
+for a configured provider, leaking a raw `KeyError` instead of the catalogued error. All fixed and
+regression-tested — see the "fix: conversation-quality bugs found live-testing against real Gemini"
+commit for the full detail on each.
+
+**Not yet built:** the 40-scenario harness, CSV-ingested-visit call start, README/final report.
 
 ## Sprint 2 — Orchestration & telephony
 - [ ] **S2.1 Contact window + retry policy** (pure) with exhaustive boundary tests.
