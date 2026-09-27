@@ -303,7 +303,15 @@ async def _call_node_llm(
             )
             contract = NodeContract.model_validate(result.data)
             events.append(
-                ("LLM_RESPONSE", {"node": node.value, "proposed_next": contract.proposed_next})
+                (
+                    "LLM_RESPONSE",
+                    {
+                        "node": node.value,
+                        "proposed_next": contract.proposed_next,
+                        "latency_ms": result.latency_ms,
+                        "model": result.model,
+                    },
+                )
             )
             return contract, tuple(events), False
         except pybreaker.CircuitBreakerError as exc:

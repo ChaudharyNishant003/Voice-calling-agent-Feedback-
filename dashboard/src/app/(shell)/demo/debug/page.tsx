@@ -64,7 +64,7 @@ function DebugContent() {
   const [callIdInput, setCallIdInput] = useState(searchParams.get("call_id") ?? "");
   const callId = searchParams.get("call_id") ?? callIdInput;
 
-  const { data: events, isLoading, isError } = useQuery({
+  const { data: events, isLoading, isError, error } = useQuery({
     queryKey: ["demo-events", callId],
     queryFn: () => demoApi.getEvents(callId),
     enabled: !!callId,
@@ -108,7 +108,14 @@ function DebugContent() {
               <p>Call ID: {callId}</p>
               {lastEvent && <p>Last event: {lastEvent.type}</p>}
               {isLoading && <p>Loading events…</p>}
-              {isError && <p className="text-red-700">Couldn&apos;t load events for this call.</p>}
+              {isError && (
+                <p className="text-red-700">
+                  Couldn&apos;t load events for this call
+                  {error instanceof Error && error.message ? `: ${error.message}` : "."}
+                  {" "}Check the call ID is complete (copy it from the Results page&apos;s Debug link
+                  rather than typing it) — this needs the call ID, not the visit ID.
+                </p>
+              )}
             </CardContent>
           </Card>
         )}

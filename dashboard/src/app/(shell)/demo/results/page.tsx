@@ -69,6 +69,7 @@ export default function DemoResultsPage() {
                       <th className="py-2 pr-4 font-medium">Severity</th>
                       <th className="py-2 pr-4 font-medium">Complaints</th>
                       <th className="py-2 pr-4 font-medium">Escalated</th>
+                      <th className="py-2 pr-4 font-medium">Debug</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -102,6 +103,14 @@ export default function DemoResultsPage() {
                         <td className="py-2 pr-4">{r.complaint_count}</td>
                         <td className="py-2 pr-4">
                           {r.escalated ? <Badge variant="destructive">Yes</Badge> : "No"}
+                        </td>
+                        <td className="py-2 pr-4">
+                          <Link
+                            href={`/demo/debug?call_id=${r.call_id}`}
+                            className="text-primary underline-offset-4 hover:underline"
+                          >
+                            View
+                          </Link>
                         </td>
                       </tr>
                     ))}
