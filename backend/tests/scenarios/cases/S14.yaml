@@ -1,0 +1,25 @@
+id: S14
+title: Repeat-request exceeds limit — gives up to callback
+tags:
+- repair
+- callback
+visit:
+  visit_type: OPD
+  patient_first_name: Ramesh
+  patient_age: 45
+persona: Patient repeatedly says they didn't understand the question, three times in a row.
+turns:
+- patient_text: Kya?
+  event_kind: utterance
+  contract:
+    proposed_next: open_and_identify
+- patient_text: Phir se boliye please
+  event_kind: utterance
+  contract:
+    proposed_next: open_and_identify
+- patient_text: Samajh nahi aaya mujhe
+  event_kind: utterance
+expect:
+  outcome: callback
+  final_node: callback
+rubric: null

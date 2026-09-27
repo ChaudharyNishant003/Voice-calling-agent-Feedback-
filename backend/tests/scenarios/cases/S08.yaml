@@ -1,0 +1,27 @@
+id: S08
+title: Refuses recording consent — no_consent outcome
+tags:
+- consent
+- no_consent
+visit:
+  visit_type: OPD
+  patient_first_name: Ramesh
+  patient_age: 45
+persona: Patient confirms identity but declines to be recorded/surveyed.
+turns:
+- patient_text: Haan main hi bol raha hoon
+  event_kind: utterance
+  contract:
+    intents:
+    - affirm
+    proposed_next: purpose_consent_time
+- patient_text: Nahi mujhe record nahi karwana, rehne dijiye
+  event_kind: utterance
+  contract:
+    intents:
+    - refuses_recording
+    proposed_next: close
+expect:
+  outcome: no_consent
+  final_node: close
+rubric: null

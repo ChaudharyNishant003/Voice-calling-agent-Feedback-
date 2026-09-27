@@ -1,0 +1,33 @@
+id: S10
+title: Opt-out mid-survey — policy pre-check overrides any node
+tags:
+- opt_out
+- policy
+visit:
+  visit_type: OPD
+  patient_first_name: Ramesh
+  patient_age: 45
+persona: Patient cooperates initially, then asks to stop partway through.
+turns:
+- patient_text: Haan main hi bol raha hoon
+  event_kind: utterance
+  contract:
+    intents:
+    - affirm
+    proposed_next: purpose_consent_time
+- patient_text: Haan theek hai, boliye
+  event_kind: utterance
+  contract:
+    intents:
+    - affirm
+    proposed_next: open_experience
+- patient_text: Thoda time nahi hai baat karne ka
+  event_kind: utterance
+  contract:
+    proposed_next: probe_topics
+- patient_text: Bas ab call mat karo mujhe
+  event_kind: utterance
+expect:
+  outcome: opt_out
+  final_node: opt_out
+rubric: null

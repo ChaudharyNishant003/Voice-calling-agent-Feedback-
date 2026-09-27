@@ -1,0 +1,50 @@
+id: S40
+title: STT error at the very first turn — reprompts, then continues normally
+tags:
+- robustness
+- stt_error
+visit:
+  visit_type: OPD
+  patient_first_name: Ramesh
+  patient_age: 45
+persona: The speech recognizer fails to transcribe the patient's first response; the agent reprompts and
+  the call continues normally once a real utterance arrives.
+turns:
+- patient_text: ''
+  event_kind: stt_error
+- patient_text: Haan main hi bol raha hoon
+  event_kind: utterance
+  contract:
+    intents:
+    - affirm
+    proposed_next: purpose_consent_time
+- patient_text: Haan theek hai, boliye
+  event_kind: utterance
+  contract:
+    intents:
+    - affirm
+    proposed_next: open_experience
+- patient_text: Sab thik tha
+  event_kind: utterance
+  contract:
+    proposed_next: overall_rating
+- patient_text: Chaar dunga
+  event_kind: utterance
+  contract:
+    rating:
+      value: 4
+      inferred: false
+    proposed_next: anything_else
+- patient_text: Nahi bas itna hi
+  event_kind: utterance
+  contract:
+    proposed_next: readback_and_next_steps
+- patient_text: Haan sahi hai
+  event_kind: utterance
+  contract:
+    proposed_next: close
+expect:
+  outcome: completed
+  final_node: close
+  rating: 4
+rubric: null

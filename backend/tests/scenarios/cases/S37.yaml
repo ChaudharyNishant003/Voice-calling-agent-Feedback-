@@ -1,0 +1,57 @@
+id: S37
+title: Pure English-speaking patient — locks to English from turn one
+tags:
+- language
+- happy_path
+visit:
+  visit_type: OPD
+  patient_first_name: Ramesh
+  patient_age: 45
+persona: Patient speaks English throughout; the very first turn locks the call's language immediately
+  (no streak needed for the first customer turn).
+turns:
+- patient_text: Yes, this is Ramesh speaking.
+  event_kind: utterance
+  contract:
+    language_detected: english
+    register: formal
+    intents:
+    - affirm
+    proposed_next: purpose_consent_time
+- patient_text: Yes, that's fine, go ahead.
+  event_kind: utterance
+  contract:
+    language_detected: english
+    register: formal
+    intents:
+    - affirm
+    proposed_next: open_experience
+- patient_text: It was a good experience overall.
+  event_kind: utterance
+  contract:
+    language_detected: english
+    proposed_next: overall_rating
+- patient_text: I'd rate it five.
+  event_kind: utterance
+  contract:
+    language_detected: english
+    rating:
+      value: 5
+      inferred: false
+    proposed_next: anything_else
+- patient_text: No, nothing else, thank you.
+  event_kind: utterance
+  contract:
+    language_detected: english
+    proposed_next: readback_and_next_steps
+- patient_text: Yes, that's correct.
+  event_kind: utterance
+  contract:
+    language_detected: english
+    proposed_next: close
+expect:
+  outcome: completed
+  final_node: close
+  language_mode: english
+  rating: 5
+rubric: null

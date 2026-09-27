@@ -1,0 +1,19 @@
+id: S15
+title: Two consecutive silences — ends to callback
+tags:
+- repair
+- silence
+visit:
+  visit_type: OPD
+  patient_first_name: Ramesh
+  patient_age: 45
+persona: Patient goes silent twice in a row (dropped line / distracted).
+turns:
+- patient_text: ''
+  event_kind: silence
+- patient_text: ''
+  event_kind: silence
+expect:
+  outcome: callback
+  final_node: callback
+rubric: null

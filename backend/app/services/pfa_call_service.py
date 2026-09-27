@@ -841,7 +841,11 @@ def _handle_silence(state: CallState, persona: PersonaContext) -> TurnResult:
     action, new_count = repair.on_silence(state.consecutive_silences)
     if action == repair.RepairAction.end_call_silence:
         new_state = replace(
-            state, consecutive_silences=new_count, ended=True, call_outcome=CallOutcome.callback
+            state,
+            consecutive_silences=new_count,
+            node=Node.callback,
+            ended=True,
+            call_outcome=CallOutcome.callback,
         )
         text = _render(new_state, persona, "silence_second")
         return _finalize(new_state, persona, text, events=(("SILENCE_END", {}),))

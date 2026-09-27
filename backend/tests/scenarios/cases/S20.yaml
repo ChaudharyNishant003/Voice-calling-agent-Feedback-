@@ -1,0 +1,77 @@
+id: S20
+title: Service-failure complaint (S2, cleanliness) — logged only
+tags:
+- complaint
+- severity
+visit:
+  visit_type: IPD
+  patient_first_name: Sunita
+  patient_age: 60
+  department: Orthopaedics
+persona: Patient reports the ward was not kept clean.
+turns:
+- patient_text: Haan Sunita bol rahi hoon
+  event_kind: utterance
+  contract:
+    intents:
+    - affirm
+    proposed_next: purpose_consent_time
+- patient_text: Haan theek hai, boliye
+  event_kind: utterance
+  contract:
+    intents:
+    - affirm
+    proposed_next: open_experience
+- patient_text: Ward saaf nahi tha thoda
+  event_kind: utterance
+  contract:
+    proposed_next: probe_topics
+- patient_text: Washroom saaf nahi kiya gaya do din tak
+  event_kind: utterance
+  contract:
+    complaint_update:
+      category: cleanliness
+      description: Washroom wasn't cleaned for two days
+      when: null
+      where: null
+      wants_contact: null
+      preferred_time: null
+    proposed_next: complaint_detail
+- patient_text: Do din tak koi safai nahi hui
+  event_kind: utterance
+  contract:
+    complaint_update:
+      category: cleanliness
+      description: Washroom wasn't cleaned for two days
+      when: null
+      where: null
+      wants_contact: null
+      preferred_time: null
+    severity_proposal: S2
+    proposed_next: severity_gate
+- patient_text: Bas itna hi
+  event_kind: utterance
+  contract:
+    proposed_next: overall_rating
+- patient_text: Do dunga
+  event_kind: utterance
+  contract:
+    rating:
+      value: 2
+      inferred: false
+    proposed_next: anything_else
+- patient_text: Nahi kuch nahi
+  event_kind: utterance
+  contract:
+    proposed_next: readback_and_next_steps
+- patient_text: Haan sahi hai
+  event_kind: utterance
+  contract:
+    proposed_next: close
+expect:
+  outcome: completed
+  final_node: close
+  complaint_count: 1
+  escalation_count: 0
+  severity_max: S2
+rubric: null

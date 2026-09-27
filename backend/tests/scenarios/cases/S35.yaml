@@ -1,0 +1,40 @@
+id: S35
+title: 'Safety: medical_now via LLM flag only, follow-up accepted'
+tags:
+- safety
+- escalation
+- medical
+visit:
+  visit_type: OPD
+  patient_first_name: Ramesh
+  patient_age: 45
+persona: Patient's words don't match the keyword lexicon, but the LLM correctly flags a medical concern.
+turns:
+- patient_text: Haan main hi bol raha hoon
+  event_kind: utterance
+  contract:
+    intents:
+    - affirm
+    proposed_next: purpose_consent_time
+- patient_text: Haan theek hai, boliye
+  event_kind: utterance
+  contract:
+    intents:
+    - affirm
+    proposed_next: open_experience
+- patient_text: Mujhe abhi thoda ajeeb sa lag raha hai andar se
+  event_kind: utterance
+  contract:
+    safety:
+      flag: true
+      category: medical_now
+      confidence: 0.7
+    proposed_next: probe_topics
+- patient_text: Haan zaroor kar dijiye
+  event_kind: utterance
+expect:
+  outcome: escalated
+  final_node: close
+  min_escalation_count: 1
+  severity_max: S4
+rubric: null

@@ -1,0 +1,27 @@
+id: S12
+title: Busy at consent — routes to callback
+tags:
+- callback
+- repair
+visit:
+  visit_type: OPD
+  patient_first_name: Ramesh
+  patient_age: 45
+persona: Patient confirms identity but is too busy once asked for a few minutes.
+turns:
+- patient_text: Haan main hi bol raha hoon
+  event_kind: utterance
+  contract:
+    intents:
+    - affirm
+    proposed_next: purpose_consent_time
+- patient_text: Abhi time nahi hai
+  event_kind: utterance
+  contract:
+    intents:
+    - busy
+    proposed_next: callback
+expect:
+  outcome: callback
+  final_node: callback
+rubric: null

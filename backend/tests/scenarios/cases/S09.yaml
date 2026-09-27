@@ -1,0 +1,17 @@
+id: S09
+title: Opt-out at first turn — policy pre-check, no LLM call
+tags:
+- opt_out
+- policy
+visit:
+  visit_type: OPD
+  patient_first_name: Ramesh
+  patient_age: 45
+persona: Patient immediately asks never to be called again.
+turns:
+- patient_text: Mujhe nahi chahiye, dobara call mat karo
+  event_kind: utterance
+expect:
+  outcome: opt_out
+  final_node: opt_out
+rubric: null

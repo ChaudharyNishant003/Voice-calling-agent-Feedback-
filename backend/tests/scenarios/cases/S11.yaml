@@ -1,0 +1,21 @@
+id: S11
+title: Busy at identify — routes to callback
+tags:
+- callback
+- repair
+visit:
+  visit_type: OPD
+  patient_first_name: Ramesh
+  patient_age: 45
+persona: Patient is busy right when the call connects.
+turns:
+- patient_text: Abhi bahut busy hoon
+  event_kind: utterance
+  contract:
+    intents:
+    - busy
+    proposed_next: callback
+expect:
+  outcome: callback
+  final_node: callback
+rubric: null

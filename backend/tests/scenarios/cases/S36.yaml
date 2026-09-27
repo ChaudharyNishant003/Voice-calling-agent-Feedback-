@@ -1,0 +1,64 @@
+id: S36
+title: Complaint LLM-judged S4 at severity_gate (no safety keyword/flag)
+tags:
+- escalation
+- severity
+visit:
+  visit_type: IPD
+  patient_first_name: Sunita
+  patient_age: 60
+  department: Orthopaedics
+persona: Patient describes a fall with no medical keyword hit, but the complaint's own severity clearly
+  warrants urgent escalation — code never downgrades the LLM's own S4 judgement.
+turns:
+- patient_text: Haan Sunita bol rahi hoon
+  event_kind: utterance
+  contract:
+    intents:
+    - affirm
+    proposed_next: purpose_consent_time
+- patient_text: Haan theek hai, boliye
+  event_kind: utterance
+  contract:
+    intents:
+    - affirm
+    proposed_next: open_experience
+- patient_text: Main gir gayi thi wahan floor pe
+  event_kind: utterance
+  contract:
+    proposed_next: probe_topics
+    topics:
+    - category: facilities
+      sentiment: negative
+      verbatim: Main gir gayi thi wahan floor pe
+      staff_name: null
+- patient_text: Geela floor tha aur koi support nahi tha
+  event_kind: utterance
+  contract:
+    complaint_update:
+      category: facilities
+      description: Patient fell on a wet floor, no support provided
+      when: null
+      where: null
+      wants_contact: null
+      preferred_time: null
+    proposed_next: complaint_detail
+- patient_text: Bahut chot lagi thi aur koi turant nahi aaya
+  event_kind: utterance
+  contract:
+    complaint_update:
+      category: facilities
+      description: Fall on wet floor caused injury, needs urgent follow-up
+      when: null
+      where: null
+      wants_contact: null
+      preferred_time: null
+    severity_proposal: S4
+    proposed_next: severity_gate
+expect:
+  outcome: escalated
+  final_node: escalate_urgent
+  min_escalation_count: 1
+  severity_max: S4
+  min_complaint_count: 1
+rubric: null

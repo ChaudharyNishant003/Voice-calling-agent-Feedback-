@@ -1,0 +1,56 @@
+id: S05
+title: Caregiver accompanied — happy path, respondent_type=proxy
+tags:
+- caregiver
+- happy_path
+visit:
+  visit_type: OPD
+  patient_first_name: Kamla
+  patient_age: 72
+  department: Neurology
+  doctor_name: Dr. Sen
+persona: Patient's son answers the phone, confirms he was accompanying her, gives consent on her behalf,
+  reports a good experience.
+turns:
+- patient_text: Nahi main beta hoon unka
+  event_kind: utterance
+  contract:
+    intents:
+    - caregiver
+    proposed_next: caregiver
+- patient_text: Haan main saath tha
+  event_kind: utterance
+  contract:
+    intents:
+    - accompanied
+    proposed_next: purpose_consent_time
+- patient_text: Haan theek hai, boliye
+  event_kind: utterance
+  contract:
+    intents:
+    - affirm
+    proposed_next: open_experience
+- patient_text: Sab thik raha, doctor ne acche se samjhaya
+  event_kind: utterance
+  contract:
+    proposed_next: overall_rating
+- patient_text: Paanch dunga
+  event_kind: utterance
+  contract:
+    rating:
+      value: 5
+      inferred: false
+    proposed_next: anything_else
+- patient_text: Nahi bas itna hi
+  event_kind: utterance
+  contract:
+    proposed_next: readback_and_next_steps
+- patient_text: Haan sahi hai
+  event_kind: utterance
+  contract:
+    proposed_next: close
+expect:
+  outcome: completed
+  final_node: close
+  respondent_type: proxy
+rubric: null

@@ -1,0 +1,79 @@
+id: S21
+title: Safety-concern complaint (S3, staff behaviour) — escalates standard
+tags:
+- complaint
+- severity
+- escalation
+visit:
+  visit_type: OPD
+  patient_first_name: Ramesh
+  patient_age: 45
+  department: Cardiology
+persona: Patient reports rude/dismissive staff behaviour, a real service-recovery concern.
+turns:
+- patient_text: Haan main hi bol raha hoon
+  event_kind: utterance
+  contract:
+    intents:
+    - affirm
+    proposed_next: purpose_consent_time
+- patient_text: Haan theek hai, boliye
+  event_kind: utterance
+  contract:
+    intents:
+    - affirm
+    proposed_next: open_experience
+- patient_text: Staff ka behaviour thoda achha nahi tha
+  event_kind: utterance
+  contract:
+    proposed_next: probe_topics
+- patient_text: Nurse ne bahut rudely baat ki mujhse
+  event_kind: utterance
+  contract:
+    complaint_update:
+      category: staff_behaviour
+      description: A nurse spoke very rudely
+      when: null
+      where: null
+      wants_contact: null
+      preferred_time: null
+    proposed_next: complaint_detail
+- patient_text: Bahut bura laga us tarike se baat karna
+  event_kind: utterance
+  contract:
+    complaint_update:
+      category: staff_behaviour
+      description: A nurse spoke very rudely, patient felt disrespected
+      when: null
+      where: null
+      wants_contact: null
+      preferred_time: null
+    severity_proposal: S3
+    proposed_next: severity_gate
+- patient_text: Bas itna hi
+  event_kind: utterance
+  contract:
+    proposed_next: overall_rating
+- patient_text: Do dunga
+  event_kind: utterance
+  contract:
+    rating:
+      value: 2
+      inferred: false
+    proposed_next: anything_else
+- patient_text: Nahi kuch nahi
+  event_kind: utterance
+  contract:
+    proposed_next: readback_and_next_steps
+- patient_text: Haan sahi hai
+  event_kind: utterance
+  contract:
+    proposed_next: close
+expect:
+  outcome: completed
+  final_node: close
+  complaint_count: 1
+  min_escalation_count: 1
+  severity_max: S3
+  escalated: true
+rubric: null

@@ -1,0 +1,21 @@
+id: S07
+title: Wrong number — closes immediately
+tags:
+- identity
+- wrong_number
+visit:
+  visit_type: OPD
+  patient_first_name: Ramesh
+  patient_age: 45
+persona: The person who picks up has never heard of the named patient.
+turns:
+- patient_text: Aap galat number par call kar rahe hain, yahan koi Ramesh nahi hai
+  event_kind: utterance
+  contract:
+    intents:
+    - wrong_person
+    proposed_next: close_wrong
+expect:
+  outcome: wrong_number
+  final_node: close_wrong
+rubric: null

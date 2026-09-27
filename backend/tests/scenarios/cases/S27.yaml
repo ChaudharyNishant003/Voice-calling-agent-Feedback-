@@ -1,0 +1,22 @@
+id: S27
+title: 'Safety: medication_error via keyword, follow-up declined'
+tags:
+- safety
+- escalation
+- medical
+visit:
+  visit_type: IPD
+  patient_first_name: Sunita
+  patient_age: 60
+persona: Patient reports being given the wrong medicine during their stay.
+turns:
+- patient_text: Mujhe wrong medicine de di gayi thi kal
+  event_kind: utterance
+- patient_text: Nahi rehne dijiye abhi
+  event_kind: utterance
+expect:
+  outcome: escalated
+  final_node: close
+  min_escalation_count: 1
+  severity_max: S4
+rubric: null

@@ -1,0 +1,100 @@
+id: S38
+title: Turn ceiling (20 agent turns) forces the call to close
+tags:
+- ceiling
+- robustness
+visit:
+  visit_type: OPD
+  patient_first_name: Ramesh
+  patient_age: 45
+persona: A patient who keeps chatting without ever answering 'anything else?' or reaching a rating — the
+  hard 20-turn ceiling must end the call regardless of what the LLM keeps proposing.
+turns:
+- patient_text: Haan main hi bol raha hoon
+  event_kind: utterance
+  contract:
+    intents:
+    - affirm
+    proposed_next: purpose_consent_time
+- patient_text: Haan theek hai, boliye
+  event_kind: utterance
+  contract:
+    intents:
+    - affirm
+    proposed_next: open_experience
+- patient_text: Sab thik hi chal raha hai abhi tak
+  event_kind: utterance
+  contract:
+    proposed_next: probe_topics
+- patient_text: Aur kuch nahi, bas baat kar rahe hain (1)
+  event_kind: utterance
+  contract:
+    proposed_next: probe_topics
+- patient_text: Aur kuch nahi, bas baat kar rahe hain (2)
+  event_kind: utterance
+  contract:
+    proposed_next: probe_topics
+- patient_text: Aur kuch nahi, bas baat kar rahe hain (3)
+  event_kind: utterance
+  contract:
+    proposed_next: probe_topics
+- patient_text: Aur kuch nahi, bas baat kar rahe hain (4)
+  event_kind: utterance
+  contract:
+    proposed_next: probe_topics
+- patient_text: Aur kuch nahi, bas baat kar rahe hain (5)
+  event_kind: utterance
+  contract:
+    proposed_next: probe_topics
+- patient_text: Aur kuch nahi, bas baat kar rahe hain (6)
+  event_kind: utterance
+  contract:
+    proposed_next: probe_topics
+- patient_text: Aur kuch nahi, bas baat kar rahe hain (7)
+  event_kind: utterance
+  contract:
+    proposed_next: probe_topics
+- patient_text: Aur kuch nahi, bas baat kar rahe hain (8)
+  event_kind: utterance
+  contract:
+    proposed_next: probe_topics
+- patient_text: Aur kuch nahi, bas baat kar rahe hain (9)
+  event_kind: utterance
+  contract:
+    proposed_next: probe_topics
+- patient_text: Aur kuch nahi, bas baat kar rahe hain (10)
+  event_kind: utterance
+  contract:
+    proposed_next: probe_topics
+- patient_text: Aur kuch nahi, bas baat kar rahe hain (11)
+  event_kind: utterance
+  contract:
+    proposed_next: probe_topics
+- patient_text: Aur kuch nahi, bas baat kar rahe hain (12)
+  event_kind: utterance
+  contract:
+    proposed_next: probe_topics
+- patient_text: Aur kuch nahi, bas baat kar rahe hain (13)
+  event_kind: utterance
+  contract:
+    proposed_next: probe_topics
+- patient_text: Aur kuch nahi, bas baat kar rahe hain (14)
+  event_kind: utterance
+  contract:
+    proposed_next: probe_topics
+- patient_text: Aur kuch nahi, bas baat kar rahe hain (15)
+  event_kind: utterance
+  contract:
+    proposed_next: probe_topics
+- patient_text: Aur kuch nahi, bas baat kar rahe hain (16)
+  event_kind: utterance
+  contract:
+    proposed_next: probe_topics
+- patient_text: Aur kuch nahi, bas baat kar rahe hain (17)
+  event_kind: utterance
+  contract:
+    proposed_next: probe_topics
+expect:
+  outcome: completed
+  final_node: close
+rubric: null

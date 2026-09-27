@@ -1,0 +1,17 @@
+id: S13
+title: Wants human at start — policy pre-check, no LLM call
+tags:
+- policy
+- wants_human
+visit:
+  visit_type: OPD
+  patient_first_name: Ramesh
+  patient_age: 45
+persona: Patient immediately asks to speak to a real person instead of the AI.
+turns:
+- patient_text: Mujhe kisi insaan se baat karni hai
+  event_kind: utterance
+expect:
+  outcome: callback
+  final_node: callback
+rubric: null

@@ -1,0 +1,53 @@
+id: S01
+title: Happy path — OPD, high rating, no complaints
+tags:
+- happy_path
+- opd
+visit:
+  visit_type: OPD
+  patient_first_name: Ramesh
+  patient_age: 45
+  department: Cardiology
+  doctor_name: Dr. Rao
+persona: Cooperative Hinglish-speaking OPD patient. Confirms identity and consent immediately, reports
+  a great experience, rates it 5, has nothing else to add, confirms the readback and closes politely.
+turns:
+- patient_text: Haan main hi bol raha hoon
+  event_kind: utterance
+  contract:
+    intents:
+    - affirm
+    proposed_next: purpose_consent_time
+- patient_text: Haan theek hai, boliye
+  event_kind: utterance
+  contract:
+    intents:
+    - affirm
+    proposed_next: open_experience
+- patient_text: Sab kuch bahut accha tha, doctor ne dhyan se dekha
+  event_kind: utterance
+  contract:
+    proposed_next: overall_rating
+- patient_text: Paanch dunga
+  event_kind: utterance
+  contract:
+    rating:
+      value: 5
+      inferred: false
+    proposed_next: anything_else
+- patient_text: Nahi bas itna hi
+  event_kind: utterance
+  contract:
+    proposed_next: readback_and_next_steps
+- patient_text: Haan sahi hai
+  event_kind: utterance
+  contract:
+    proposed_next: close
+expect:
+  outcome: completed
+  final_node: close
+  rating: 5
+  complaint_count: 0
+  escalated: false
+rubric: Agent asks consent before any survey question, never re-asks an answered question, closes without
+  asking for a review or referral.

@@ -1,0 +1,20 @@
+id: S30
+title: 'Safety: abuse via keyword — ends immediately'
+tags:
+- safety
+- escalation
+- abuse
+visit:
+  visit_type: IPD
+  patient_first_name: Sunita
+  patient_age: 60
+persona: Patient reports being physically hit by staff during their stay.
+turns:
+- patient_text: Nurse ne mujhe maar diya tha ward mein
+  event_kind: utterance
+expect:
+  outcome: escalated
+  final_node: escalate_urgent
+  min_escalation_count: 1
+  severity_max: S4
+rubric: null

@@ -1,0 +1,52 @@
+id: S16
+title: Asks if agent is a robot mid-consent, then affirms
+tags:
+- repair
+- happy_path
+visit:
+  visit_type: OPD
+  patient_first_name: Ramesh
+  patient_age: 45
+persona: Patient is suspicious the caller is an AI, asks directly, then proceeds once reassured.
+turns:
+- patient_text: Haan main hi bol raha hoon
+  event_kind: utterance
+  contract:
+    intents:
+    - affirm
+    proposed_next: purpose_consent_time
+- patient_text: Kya aap robot ho?
+  event_kind: utterance
+  contract:
+    intents:
+    - asks_if_ai
+    proposed_next: purpose_consent_time
+- patient_text: Theek hai, shuru kariye
+  event_kind: utterance
+  contract:
+    intents:
+    - affirm
+    proposed_next: open_experience
+- patient_text: Sab accha tha
+  event_kind: utterance
+  contract:
+    proposed_next: overall_rating
+- patient_text: Paanch dunga
+  event_kind: utterance
+  contract:
+    rating:
+      value: 5
+      inferred: false
+    proposed_next: anything_else
+- patient_text: Nahi bas itna hi
+  event_kind: utterance
+  contract:
+    proposed_next: readback_and_next_steps
+- patient_text: Haan sahi hai
+  event_kind: utterance
+  contract:
+    proposed_next: close
+expect:
+  outcome: completed
+  final_node: close
+rubric: null

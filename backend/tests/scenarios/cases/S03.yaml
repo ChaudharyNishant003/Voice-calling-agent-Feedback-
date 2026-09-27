@@ -1,0 +1,50 @@
+id: S03
+title: Happy path — Diagnostics visit, average rating
+tags:
+- happy_path
+- diagnostics
+visit:
+  visit_type: DIAGNOSTICS
+  patient_first_name: Anil
+  patient_age: 33
+  department: Radiology
+  doctor_name: null
+persona: Diagnostics-only patient (came in for a scan). Brief, cooperative, average rating.
+turns:
+- patient_text: Haan Anil bol raha hoon
+  event_kind: utterance
+  contract:
+    intents:
+    - affirm
+    proposed_next: purpose_consent_time
+- patient_text: Haan theek hai, boliye
+  event_kind: utterance
+  contract:
+    intents:
+    - affirm
+    proposed_next: open_experience
+- patient_text: Scan thik se ho gaya, wait thoda tha
+  event_kind: utterance
+  contract:
+    proposed_next: overall_rating
+- patient_text: Teen dunga
+  event_kind: utterance
+  contract:
+    rating:
+      value: 3
+      inferred: false
+    proposed_next: anything_else
+- patient_text: Nahi bas itna hi
+  event_kind: utterance
+  contract:
+    proposed_next: readback_and_next_steps
+- patient_text: Haan sahi hai
+  event_kind: utterance
+  contract:
+    proposed_next: close
+expect:
+  outcome: completed
+  final_node: close
+  rating: 3
+  complaint_count: 0
+rubric: null

@@ -1,0 +1,52 @@
+id: S39
+title: LLM hallucinates an invalid node name — rejected, call recovers
+tags:
+- robustness
+- illegal_transition
+visit:
+  visit_type: OPD
+  patient_first_name: Ramesh
+  patient_age: 45
+persona: The node LLM proposes a node name that doesn't exist in the graph (as seen live against real
+  Gemini) — the engine must reject it and stay put, not crash or silently jump anywhere.
+turns:
+- patient_text: Haan main hi bol raha hoon
+  event_kind: utterance
+  contract:
+    intents:
+    - affirm
+    proposed_next: purpose_consent_time
+- patient_text: Haan theek hai, boliye
+  event_kind: utterance
+  contract:
+    intents:
+    - affirm
+    proposed_next: open_experience
+- patient_text: Sab accha tha
+  event_kind: utterance
+  contract:
+    proposed_next: conversation_complete
+- patient_text: Bas theek tha overall
+  event_kind: utterance
+  contract:
+    proposed_next: overall_rating
+- patient_text: Paanch dunga
+  event_kind: utterance
+  contract:
+    rating:
+      value: 5
+      inferred: false
+    proposed_next: anything_else
+- patient_text: Nahi bas itna hi
+  event_kind: utterance
+  contract:
+    proposed_next: readback_and_next_steps
+- patient_text: Haan sahi hai
+  event_kind: utterance
+  contract:
+    proposed_next: close
+expect:
+  outcome: completed
+  final_node: close
+  rating: 5
+rubric: null

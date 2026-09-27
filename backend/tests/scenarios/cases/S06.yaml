@@ -1,0 +1,28 @@
+id: S06
+title: Caregiver not accompanied — routes to callback
+tags:
+- caregiver
+- callback
+visit:
+  visit_type: OPD
+  patient_first_name: Kamla
+  patient_age: 72
+  department: Neurology
+persona: Patient's son answers but was not present for the visit; agent offers a callback instead.
+turns:
+- patient_text: Main beta hoon unka
+  event_kind: utterance
+  contract:
+    intents:
+    - caregiver
+    proposed_next: caregiver
+- patient_text: Nahi main ghar par hoon, saath nahi tha
+  event_kind: utterance
+  contract:
+    intents:
+    - not_accompanied
+    proposed_next: callback
+expect:
+  outcome: callback
+  final_node: callback
+rubric: null
