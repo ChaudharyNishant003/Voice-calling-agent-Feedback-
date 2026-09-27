@@ -14,7 +14,7 @@ from datetime import date
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -124,6 +124,7 @@ class SubmitTurnRequest(BaseModel):
 
 class ResultListItemResponse(BaseModel):
     call_id: str
+    visit_id: str
     started_at: str | None
     ended_at: str | None
     patient_first_name: str | None
@@ -134,6 +135,11 @@ class ResultListItemResponse(BaseModel):
     severity_max: str | None
     complaint_count: int
     escalated: bool
+
+
+class ResultsPageResponse(BaseModel):
+    items: list[ResultListItemResponse]
+    total: int
 
 
 class ResultDetailResponse(BaseModel):
@@ -492,25 +498,31 @@ async def get_call_events(
 
 @router.get("/results")
 async def list_results(
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_superadmin_db_session),
-) -> list[ResultListItemResponse]:
-    rows = await pfa_results_service.list_results(session)
-    return [
-        ResultListItemResponse(
-            call_id=str(r.call_id),
-            started_at=r.started_at.isoformat() if r.started_at else None,
-            ended_at=r.ended_at.isoformat() if r.ended_at else None,
-            patient_first_name=r.patient_first_name,
-            visit_type=r.visit_type,
-            department=r.department,
-            outcome=r.outcome,
-            rating=r.rating,
-            severity_max=r.severity_max,
-            complaint_count=r.complaint_count,
-            escalated=r.escalated,
-        )
-        for r in rows
-    ]
+) -> ResultsPageResponse:
+    page = await pfa_results_service.list_results(session, limit=limit, offset=offset)
+    return ResultsPageResponse(
+        items=[
+            ResultListItemResponse(
+                call_id=str(r.call_id),
+                visit_id=str(r.visit_id),
+                started_at=r.started_at.isoformat() if r.started_at else None,
+                ended_at=r.ended_at.isoformat() if r.ended_at else None,
+                patient_first_name=r.patient_first_name,
+                visit_type=r.visit_type,
+                department=r.department,
+                outcome=r.outcome,
+                rating=r.rating,
+                severity_max=r.severity_max,
+                complaint_count=r.complaint_count,
+                escalated=r.escalated,
+            )
+            for r in page.items
+        ],
+        total=page.total,
+    )
 
 
 @router.get("/results/export.csv")
@@ -520,19 +532,20 @@ async def export_results_csv(
     import csv
     import io
 
-    rows = await pfa_results_service.list_results(session)
+    page = await pfa_results_service.list_results(session, limit=None)
     buffer = io.StringIO()
     writer = csv.writer(buffer)
     writer.writerow(
         [
-            "call_id", "started_at", "ended_at", "patient_first_name", "visit_type",
+            "call_id", "visit_id", "started_at", "ended_at", "patient_first_name", "visit_type",
             "department", "outcome", "rating", "severity_max", "complaint_count", "escalated",
         ]
     )
-    for r in rows:
+    for r in page.items:
         writer.writerow(
             [
                 str(r.call_id),
+                str(r.visit_id),
                 r.started_at.isoformat() if r.started_at else "",
                 r.ended_at.isoformat() if r.ended_at else "",
                 r.patient_first_name or "",

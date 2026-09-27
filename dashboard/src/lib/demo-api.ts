@@ -92,6 +92,7 @@ export interface TimelineEvent {
 
 export interface ResultListItem {
   call_id: string;
+  visit_id: string;
   started_at: string | null;
   ended_at: string | null;
   patient_first_name: string | null;
@@ -102,6 +103,11 @@ export interface ResultListItem {
   severity_max: string | null;
   complaint_count: number;
   escalated: boolean;
+}
+
+export interface ResultsPage {
+  items: ResultListItem[];
+  total: number;
 }
 
 export interface ResultDetail {
@@ -227,7 +233,13 @@ export const demoApi = {
 
   getEvents: (callId: string) => request<TimelineEvent[]>(`/demo/calls/${callId}/events`),
 
-  listResults: () => request<ResultListItem[]>("/demo/results"),
+  listResults: (params?: { limit?: number; offset?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.limit !== undefined) query.set("limit", String(params.limit));
+    if (params?.offset !== undefined) query.set("offset", String(params.offset));
+    const qs = query.toString();
+    return request<ResultsPage>(`/demo/results${qs ? `?${qs}` : ""}`);
+  },
 
   getResultDetail: (callId: string) => request<ResultDetail>(`/demo/results/${callId}`),
 

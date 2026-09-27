@@ -170,7 +170,9 @@ async def test_full_call_happy_path_through_api(client: AsyncClient, demo_mode_o
 
     results = await client.get("/api/v1/demo/results")
     assert results.status_code == 200
-    assert any(r["call_id"] == call_id for r in results.json())
+    results_body = results.json()
+    assert any(r["call_id"] == call_id for r in results_body["items"])
+    assert results_body["total"] >= 1
 
     detail = await client.get(f"/api/v1/demo/results/{call_id}")
     assert detail.status_code == 200

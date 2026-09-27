@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import NotFoundError as PFANotFoundError
@@ -36,6 +36,7 @@ class EscalationNotFoundError(PFANotFoundError):
 @dataclass(frozen=True)
 class ResultListItem:
     call_id: UUID
+    visit_id: UUID
     started_at: datetime | None
     ended_at: datetime | None
     patient_first_name: str | None
@@ -46,6 +47,12 @@ class ResultListItem:
     severity_max: str | None
     complaint_count: int
     escalated: bool
+
+
+@dataclass(frozen=True)
+class ResultsPage:
+    items: list[ResultListItem]
+    total: int
 
 
 @dataclass(frozen=True)
@@ -85,15 +92,20 @@ async def _decrypt_first_name(session: AsyncSession, patient: Patient | None) ->
     return decrypt(patient.first_name_enc, dek)
 
 
-async def list_results(session: AsyncSession, *, limit: int = 100) -> list[ResultListItem]:
-    calls = list(
-        (
-            await session.scalars(
-                select(Call).order_by(Call.scheduled_at.desc()).limit(limit)
-            )
-        ).all()
-    )
-    out: list[ResultListItem] = []
+async def list_results(
+    session: AsyncSession, *, limit: int | None = 20, offset: int = 0
+) -> ResultsPage:
+    """`limit=None` returns every call unpaginated (used by the CSV export, which must include
+    everything, not just one page). The paginated `/demo/results` route always passes a real limit.
+    """
+    total = await session.scalar(select(func.count()).select_from(Call)) or 0
+
+    query = select(Call).order_by(Call.scheduled_at.desc()).offset(offset)
+    if limit is not None:
+        query = query.limit(limit)
+    calls = list((await session.scalars(query)).all())
+
+    items: list[ResultListItem] = []
     for call in calls:
         visit = await session.get(Visit, call.visit_id)
         if visit is None:
@@ -103,9 +115,10 @@ async def list_results(session: AsyncSession, *, limit: int = 100) -> list[Resul
         state_data = call.state_snapshot or {}
         complaints = state_data.get("complaints", [])
         severities = [c.get("severity") for c in complaints] if isinstance(complaints, list) else []
-        out.append(
+        items.append(
             ResultListItem(
                 call_id=call.call_id,
+                visit_id=call.visit_id,
                 started_at=call.started_at,
                 ended_at=call.ended_at,
                 patient_first_name=await _decrypt_first_name(session, patient),
@@ -118,7 +131,7 @@ async def list_results(session: AsyncSession, *, limit: int = 100) -> list[Resul
                 escalated=bool(state_data.get("escalations")),
             )
         )
-    return out
+    return ResultsPage(items=items, total=total)
 
 
 async def get_result_detail(session: AsyncSession, call_id: UUID) -> ResultDetail:

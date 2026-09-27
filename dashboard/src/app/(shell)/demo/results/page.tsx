@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { demoApi } from "@/lib/demo-api";
 
@@ -16,12 +17,22 @@ const SEVERITY_VARIANT: Record<string, "destructive" | "warning" | "secondary"> 
   S0: "secondary",
 };
 
+const PAGE_SIZE = 20;
+
 export default function DemoResultsPage() {
-  const { data: results, isLoading, isError } = useQuery({
-    queryKey: ["demo-results"],
-    queryFn: () => demoApi.listResults(),
+  const [page, setPage] = useState(0);
+  const offset = page * PAGE_SIZE;
+
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["demo-results", offset],
+    queryFn: () => demoApi.listResults({ limit: PAGE_SIZE, offset }),
     refetchInterval: 5000,
   });
+
+  const results = data?.items;
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const hasNextPage = offset + PAGE_SIZE < total;
 
   return (
     <main className="min-h-screen bg-muted/30 p-6">
@@ -49,6 +60,7 @@ export default function DemoResultsPage() {
                   <thead>
                     <tr className="border-b text-left text-muted-foreground">
                       <th className="py-2 pr-4 font-medium">Started</th>
+                      <th className="py-2 pr-4 font-medium">Visit ID</th>
                       <th className="py-2 pr-4 font-medium">Patient</th>
                       <th className="py-2 pr-4 font-medium">Visit</th>
                       <th className="py-2 pr-4 font-medium">Department</th>
@@ -69,6 +81,9 @@ export default function DemoResultsPage() {
                           >
                             {r.started_at ? new Date(r.started_at).toLocaleString() : "—"}
                           </Link>
+                        </td>
+                        <td className="py-2 pr-4 font-mono text-xs" title={r.visit_id}>
+                          {r.visit_id.slice(0, 8)}…
                         </td>
                         <td className="py-2 pr-4">{r.patient_first_name ?? "—"}</td>
                         <td className="py-2 pr-4">{r.visit_type}</td>
@@ -92,6 +107,34 @@ export default function DemoResultsPage() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+            {total > 0 && (
+              <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
+                <span>
+                  Showing {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of {total}
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={page === 0}
+                    onClick={() => setPage((p) => Math.max(0, p - 1))}
+                  >
+                    Previous
+                  </Button>
+                  <span>
+                    Page {page + 1} of {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!hasNextPage}
+                    onClick={() => setPage((p) => p + 1)}
+                  >
+                    Next
+                  </Button>
+                </div>
               </div>
             )}
           </CardContent>
