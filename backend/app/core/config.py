@@ -81,6 +81,10 @@ class Settings(BaseSettings):
     # in production, matching the existing PFA-SYS-010 fail-closed pattern below. Localhost use only
     # — never expose the api service publicly with this enabled.
     demo_mode: bool = False
+    # Optional shared-secret gate for a demo instance reachable over the public internet (see
+    # api/deps.py's require_demo_mode). Empty (default) means no gate, matching local dev before
+    # this existed.
+    demo_passcode: str = ""
 
     @property
     def test_allowlist(self) -> list[str]:

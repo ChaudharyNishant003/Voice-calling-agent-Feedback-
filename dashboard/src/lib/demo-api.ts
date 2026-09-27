@@ -6,6 +6,21 @@
  */
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8010/api/v1";
+const PASSCODE_STORAGE_KEY = "pfa_demo_passcode";
+
+/**
+ * Only relevant for a demo instance deployed reachable over the public internet (see
+ * api/deps.py's require_demo_mode) — a wrong or missing value just gets the same 404 as demo mode
+ * being off, never a distinguishable error. Harmless to always send: a local/dev backend with no
+ * DEMO_PASSCODE configured ignores this header entirely.
+ */
+function getStoredPasscode(): string | null {
+  try {
+    return localStorage.getItem(PASSCODE_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
 
 export class DemoApiError extends Error {
   code: string;
@@ -19,9 +34,14 @@ export class DemoApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const passcode = getStoredPasscode();
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+    headers: {
+      "Content-Type": "application/json",
+      ...(passcode ? { "X-Demo-Passcode": passcode } : {}),
+      ...(init?.headers ?? {}),
+    },
   });
   if (!response.ok) {
     let code = "UNKNOWN";
@@ -243,7 +263,11 @@ export const demoApi = {
 
   getResultDetail: (callId: string) => request<ResultDetail>(`/demo/results/${callId}`),
 
-  resultsExportCsvUrl: () => `${API_BASE_URL}/demo/results/export.csv`,
+  resultsExportCsvUrl: () => {
+    const passcode = getStoredPasscode();
+    const qs = passcode ? `?demo_passcode=${encodeURIComponent(passcode)}` : "";
+    return `${API_BASE_URL}/demo/results/export.csv${qs}`;
+  },
 
   listEscalations: (status?: "open" | "acknowledged" | "closed") =>
     request<Escalation[]>(`/demo/escalations${status ? `?status=${status}` : ""}`),

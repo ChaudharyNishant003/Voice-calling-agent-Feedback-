@@ -14,7 +14,7 @@ from __future__ import annotations
 import secrets
 from collections.abc import AsyncIterator
 
-from fastapi import Cookie, Depends, Header
+from fastapi import Cookie, Depends, Header, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -74,17 +74,33 @@ def require(permission: Permission):  # type: ignore[no-untyped-def]
     return _check
 
 
-async def require_demo_mode() -> None:
+async def require_demo_mode(
+    x_demo_passcode: str | None = Header(default=None, alias="X-Demo-Passcode"),
+    demo_passcode_qs: str | None = Query(default=None, alias="demo_passcode"),
+) -> None:
     """Gate for every `/api/v1/demo/*` route (Demo MVP — docs/11_BUILD_PLAN.md). 404, not 403: an
     unguarded demo endpoint shouldn't even reveal it exists when demo mode is off, matching doc 04
     §1's "never leak existence" convention already used for cross-tenant 404s elsewhere. Fail-closed
     by construction — `core/config.py`'s `validate_startup()` additionally refuses to boot with
     `demo_mode=true` in production, so this can only ever pass on a deliberately-configured, non-
-    production, localhost demo instance.
+    production instance.
+
+    `demo_passcode` (optional) exists for a demo instance reachable over the public internet rather
+    than only localhost — the demo routes are unauthenticated by design, so without this anyone with
+    the URL could spend the account's LLM budget. Empty (the local-dev default) means no gate, same
+    as before this existed. A wrong or missing passcode gets the identical 404 as demo mode being
+    off — never a distinguishable 401/403 — so an outside prober can't tell a passcode gate exists
+    at all, only that demo mode looks off. Accepted as either the `X-Demo-Passcode` header (every
+    `demoApi` call) or a `demo_passcode` query param (the one plain `<a href>` link — CSV export —
+    that can't set a custom header).
     """
     settings = get_settings()
     if not settings.demo_mode or settings.app_env == "production":
         raise NotFoundError("PFA-SYS-011", message="Not found.")
+    if settings.demo_passcode:
+        supplied = x_demo_passcode or demo_passcode_qs
+        if not supplied or not secrets.compare_digest(supplied, settings.demo_passcode):
+            raise NotFoundError("PFA-SYS-011", message="Not found.")
 
 
 # Marker for tests/unit/test_route_completeness.py, mirroring require()'s `__pfa_permission__`
