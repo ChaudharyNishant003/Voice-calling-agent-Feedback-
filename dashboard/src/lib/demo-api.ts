@@ -53,25 +53,34 @@ export interface DemoSettings {
   hospital_name: string;
   agent_name: string;
   voice_gender: "female" | "male";
+  hospital_phone: string | null;
+  escalation_sla_text: string | null;
+  tts_script: "devanagari" | "roman";
 }
 
-export interface StartCallResponse {
+export type VisitType = "OPD" | "IPD" | "DIAGNOSTICS" | "EMERGENCY";
+export type TurnEventType = "utterance" | "silence" | "stt_error";
+
+export interface StartCallRequest {
+  provider: ProviderName;
+  patient_first_name: string;
+  patient_phone?: string | null;
+  visit_type: VisitType;
+  visit_date: string; // YYYY-MM-DD
+  department?: string | null;
+  doctor_name?: string | null;
+  patient_age?: number | null;
+}
+
+export interface ConversationTurnResponse {
   call_id: string;
-  greeting_text: string;
-  hospital_name: string;
-  agent_name: string;
-  voice_gender: "female" | "male";
-}
-
-export interface TurnResponse {
-  response_text: string;
-  detected_language: string;
-  locked_language: string;
-  switched_language: boolean;
-  topics: string[];
-  next_action: string;
-  end_call: boolean;
-  summary: string | null;
+  display_text: string;
+  speech_text: string;
+  speech_lang: string;
+  node: string;
+  ended: boolean;
+  call_outcome: string | null;
+  escalated: boolean;
 }
 
 export interface TimelineEvent {
@@ -79,6 +88,49 @@ export interface TimelineEvent {
   ts: string;
   type: string;
   data: Record<string, unknown>;
+}
+
+export interface ResultListItem {
+  call_id: string;
+  started_at: string | null;
+  ended_at: string | null;
+  patient_first_name: string | null;
+  visit_type: string;
+  department: string | null;
+  outcome: string | null;
+  rating: number | null;
+  severity_max: string | null;
+  complaint_count: number;
+  escalated: boolean;
+}
+
+export interface ResultDetail {
+  call_id: string;
+  patient_first_name: string | null;
+  visit_type: string;
+  visit_date: string;
+  department: string | null;
+  doctor_name: string | null;
+  outcome: string | null;
+  respondent_type: string;
+  language_mode: string | null;
+  rating: number | null;
+  rating_inferred: boolean;
+  topics: Array<Record<string, unknown>>;
+  complaints: Array<Record<string, unknown>>;
+  escalations: Array<Record<string, unknown>>;
+  transcript: Array<{ speaker: string; text: string }>;
+}
+
+export interface Escalation {
+  id: string;
+  call_id: string;
+  type: "standard" | "urgent";
+  category: string;
+  triggered_by: string;
+  status: "open" | "acknowledged" | "closed";
+  created_at: string;
+  acknowledged_at: string | null;
 }
 
 // --- Playground (see docs/11_BUILD_PLAN.md's Demo MVP section) — every LLM-backed step response
@@ -152,22 +204,34 @@ export const demoApi = {
   saveSettings: (settings: DemoSettings) =>
     request<DemoSettings>("/demo/settings", { method: "PUT", body: JSON.stringify(settings) }),
 
-  startCall: (provider: ProviderName) =>
-    request<StartCallResponse>("/demo/calls", {
+  startCall: (body: StartCallRequest) =>
+    request<ConversationTurnResponse>("/demo/calls", {
       method: "POST",
-      body: JSON.stringify({ provider }),
+      body: JSON.stringify(body),
     }),
 
-  submitTurn: (callId: string, provider: ProviderName, text: string) =>
-    request<TurnResponse>(`/demo/calls/${callId}/turns`, {
+  submitTurn: (callId: string, provider: ProviderName, type: TurnEventType, text?: string) =>
+    request<ConversationTurnResponse>(`/demo/calls/${callId}/turns`, {
       method: "POST",
-      body: JSON.stringify({ provider, text }),
+      body: JSON.stringify({ provider, type, text }),
     }),
 
   endCall: (callId: string) =>
     request<{ status: string }>(`/demo/calls/${callId}/end`, { method: "POST" }),
 
   getEvents: (callId: string) => request<TimelineEvent[]>(`/demo/calls/${callId}/events`),
+
+  listResults: () => request<ResultListItem[]>("/demo/results"),
+
+  getResultDetail: (callId: string) => request<ResultDetail>(`/demo/results/${callId}`),
+
+  resultsExportCsvUrl: () => `${API_BASE_URL}/demo/results/export.csv`,
+
+  listEscalations: (status?: "open" | "acknowledged" | "closed") =>
+    request<Escalation[]>(`/demo/escalations${status ? `?status=${status}` : ""}`),
+
+  acknowledgeEscalation: (escalationId: string) =>
+    request<Escalation>(`/demo/escalations/${escalationId}/ack`, { method: "POST" }),
 
   playgroundLanguageDetection: (provider: ProviderName, model: string, patientText: string) =>
     request<PlaygroundLanguageDetectionResult>("/demo/playground/steps/language-detection", {

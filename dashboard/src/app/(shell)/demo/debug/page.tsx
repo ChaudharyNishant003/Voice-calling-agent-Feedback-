@@ -9,7 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { demoApi, type TimelineEvent } from "@/lib/demo-api";
 
-const ERROR_TYPES = new Set(["ERROR"]);
+const ERROR_TYPES = new Set(["ERROR", "LLM_CONTRACT_ERROR", "ILLEGAL_TRANSITION_PROPOSED"]);
+const NOTABLE_TYPES = new Set(["SAFETY_TRIGGERED", "SEVERITY_RESOLVED", "GUARD_EVENT"]);
 
 function fieldsOf(data: Record<string, unknown>): Array<[string, unknown]> {
   return Object.entries(data).filter(([, v]) => v !== null && v !== undefined && v !== "");
@@ -18,34 +19,35 @@ function fieldsOf(data: Record<string, unknown>): Array<[string, unknown]> {
 function EventRow({ event }: { event: TimelineEvent }) {
   const [expanded, setExpanded] = useState(false);
   const isError = ERROR_TYPES.has(event.type);
+  const isNotable = NOTABLE_TYPES.has(event.type);
   const fields = fieldsOf(event.data);
+  const tone = isError
+    ? "border-red-300 bg-red-50 text-red-950"
+    : isNotable
+      ? "border-amber-300 bg-amber-50 text-amber-950"
+      : "bg-background";
+  const labelTone = isError ? "text-red-800" : isNotable ? "text-amber-800" : "text-muted-foreground";
 
   return (
-    <div
-      className={`rounded-md border p-3 text-sm ${isError ? "border-red-300 bg-red-50 text-red-950" : "bg-background"}`}
-    >
+    <div className={`rounded-md border p-3 text-sm ${tone}`}>
       <button
         type="button"
         className="flex w-full items-center justify-between gap-2 text-left"
         onClick={() => setExpanded((v) => !v)}
       >
         <span className="flex items-center gap-2">
-          <Badge variant={isError ? "destructive" : "secondary"}>{event.type}</Badge>
-          <span className={isError ? "text-red-800" : "text-muted-foreground"}>
-            {new Date(event.ts).toLocaleTimeString()}
-          </span>
+          <Badge variant={isError ? "destructive" : isNotable ? "warning" : "secondary"}>
+            {event.type}
+          </Badge>
+          <span className={labelTone}>{new Date(event.ts).toLocaleTimeString()}</span>
         </span>
-        <span className={`text-xs ${isError ? "text-red-800" : "text-muted-foreground"}`}>
-          {expanded ? "Hide" : "Show"} details
-        </span>
+        <span className={`text-xs ${labelTone}`}>{expanded ? "Hide" : "Show"} details</span>
       </button>
       {expanded && fields.length > 0 && (
         <dl className="mt-2 space-y-1 border-t pt-2">
           {fields.map(([key, value]) => (
             <div key={key} className="flex gap-2">
-              <dt className={`w-32 shrink-0 font-medium ${isError ? "text-red-800" : "text-muted-foreground"}`}>
-                {key}
-              </dt>
+              <dt className={`w-32 shrink-0 font-medium ${labelTone}`}>{key}</dt>
               <dd className="break-all">
                 {typeof value === "string" ? value : JSON.stringify(value)}
               </dd>

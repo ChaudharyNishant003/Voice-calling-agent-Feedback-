@@ -2,12 +2,24 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bug, LogIn, PhoneCall, Settings, Workflow } from "lucide-react";
+import { AlertTriangle, Bug, ListChecks, LogIn, PhoneCall, Settings, Workflow } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { href: "/demo", label: "Call", icon: PhoneCall, isActive: (path: string) => path === "/demo" },
+  {
+    href: "/demo/results",
+    label: "Results",
+    icon: ListChecks,
+    isActive: (path: string) => path.startsWith("/demo/results"),
+  },
+  {
+    href: "/demo/escalations",
+    label: "Escalations",
+    icon: AlertTriangle,
+    isActive: (path: string) => path === "/demo/escalations",
+  },
   {
     href: "/demo/settings",
     label: "Settings",

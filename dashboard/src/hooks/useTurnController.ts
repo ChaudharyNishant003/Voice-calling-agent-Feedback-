@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * Browser voice turn controller (Demo MVP spec §7) — the sequential state machine driving the
- * mic (Web Speech API SpeechRecognition) and speaker (SpeechSynthesis). Chrome desktop only, per
- * spec — this deliberately doesn't try to be cross-browser.
+ * Browser voice turn controller (PRD v2 §11) — the sequential state machine driving the mic (Web
+ * Speech API SpeechRecognition) and speaker (SpeechSynthesis). Chrome desktop only, per spec —
+ * this deliberately doesn't try to be cross-browser.
  *
  * IDLE -> STARTING -> AGENT_GREETING -> LISTENING -> PROCESSING -> AGENT_SPEAKING -> LISTENING ->
  * ... -> ENDING -> ENDED
@@ -13,11 +13,21 @@
  * sophistication (spec's own framing). Voice and manual text input both funnel through
  * `submitAndRespond`, so they always go through the exact same backend conversation engine — never
  * a second code path.
+ *
+ * Unlike the old Demo MVP engine, the backend now tells every turn's `speech_lang` directly
+ * (derived from the locked language family) — the STT recognizer's `lang` and the TTS voice
+ * selection both follow that value turn-by-turn instead of re-deriving it client-side.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { demoApi, DemoApiError, type ProviderName, type TimelineEvent } from "@/lib/demo-api";
+import {
+  demoApi,
+  DemoApiError,
+  type ProviderName,
+  type StartCallRequest,
+  type TimelineEvent,
+} from "@/lib/demo-api";
 
 export type TurnPhase =
   | "idle"
@@ -33,6 +43,9 @@ export interface TranscriptLine {
   speaker: "agent" | "patient";
   text: string;
 }
+
+// PRD §6.6: a silence is only declared after 7s of listening with no final result.
+const SILENCE_TIMEOUT_MS = 7000;
 
 interface MinimalSpeechRecognition extends EventTarget {
   lang: string;
@@ -53,6 +66,8 @@ interface SpeechRecognitionResultEvent {
   };
 }
 
+type ListenResult = { kind: "text"; text: string } | { kind: "silence" } | { kind: "none" };
+
 function getSpeechRecognitionCtor(): (new () => MinimalSpeechRecognition) | null {
   if (typeof window === "undefined") return null;
   const w = window as unknown as {
@@ -64,13 +79,6 @@ function getSpeechRecognitionCtor(): (new () => MinimalSpeechRecognition) | null
 
 function speechSynthesisAvailable(): boolean {
   return typeof window !== "undefined" && "speechSynthesis" in window;
-}
-
-// Hindi/Hinglish family -> hi-IN (Chrome's hi-IN recognizer handles both Devanagari and
-// romanized/Latin-script Hindi speech reasonably, and Hinglish code-switching within it), English
-// -> en-IN (Indian English accent model, closer to the demo's expected speakers than en-US).
-function recognitionLangFor(lockedLanguage: string | null): string {
-  return lockedLanguage === "english" ? "en-IN" : "hi-IN";
 }
 
 function pickVoice(
@@ -97,9 +105,9 @@ export function useTurnController() {
   const [phase, setPhase] = useState<TurnPhase>("idle");
   const [callId, setCallId] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
-  const [lockedLanguage, setLockedLanguage] = useState<string | null>(null);
-  const [topics, setTopics] = useState<string[]>([]);
-  const [summary, setSummary] = useState<string | null>(null);
+  const [node, setNode] = useState<string | null>(null);
+  const [callOutcome, setCallOutcome] = useState<string | null>(null);
+  const [escalated, setEscalated] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [voiceGender, setVoiceGender] = useState<"female" | "male">("female");
   const [micSupported] = useState(() => getSpeechRecognitionCtor() !== null);
@@ -107,6 +115,7 @@ export function useTurnController() {
 
   const recognitionRef = useRef<MinimalSpeechRecognition | null>(null);
   const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
+  const chosenVoiceNameRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!ttsSupported) return;
@@ -130,7 +139,10 @@ export function useTurnController() {
         }
         const utterance = new SpeechSynthesisUtterance(text);
         const voice = pickVoice(voicesRef.current, lang, voiceGender);
-        if (voice) utterance.voice = voice;
+        if (voice) {
+          utterance.voice = voice;
+          chosenVoiceNameRef.current = voice.name;
+        }
         utterance.lang = lang;
         utterance.onend = () => resolve();
         utterance.onerror = () => resolve(); // TTS failure never blocks the call (spec §17)
@@ -139,11 +151,13 @@ export function useTurnController() {
     [ttsSupported, voiceGender],
   );
 
-  const listenOnce = useCallback((lang: string): Promise<string | null> => {
+  // Races recognition against a 7s silence timeout (PRD §6.6) — whichever settles first wins;
+  // the loser is aborted/ignored.
+  const listenOnce = useCallback((lang: string): Promise<ListenResult> => {
     return new Promise((resolve) => {
       const Ctor = getSpeechRecognitionCtor();
       if (!Ctor) {
-        resolve(null);
+        resolve({ kind: "none" });
         return;
       }
       const recognition = new Ctor();
@@ -153,9 +167,18 @@ export function useTurnController() {
       recognition.interimResults = false;
 
       let settled = false;
-      const finish = (value: string | null) => {
+      const timer = setTimeout(() => {
         if (settled) return;
         settled = true;
+        recognition.abort();
+        recognitionRef.current = null;
+        resolve({ kind: "silence" });
+      }, SILENCE_TIMEOUT_MS);
+
+      const finish = (value: ListenResult) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
         recognitionRef.current = null;
         resolve(value);
       };
@@ -164,11 +187,12 @@ export function useTurnController() {
         const lastIndex = event.results.length - 1;
         const result = event.results[lastIndex];
         if (result?.isFinal) {
-          finish(result[0]?.transcript ?? null);
+          const text = result[0]?.transcript ?? "";
+          finish(text.trim() ? { kind: "text", text } : { kind: "none" });
         }
       };
-      recognition.onerror = () => finish(null);
-      recognition.onend = () => finish(null);
+      recognition.onerror = () => finish({ kind: "none" });
+      recognition.onend = () => finish({ kind: "none" });
 
       recognition.start();
     });
@@ -187,29 +211,32 @@ export function useTurnController() {
     }
   }, []);
 
-  // Submits one piece of text (from mic or manual fallback), speaks the reply, and reports
-  // whether the call ended — the one shared path both input methods go through.
+  // Submits one turn (a real utterance, a silence, or an STT error) and speaks the reply — the
+  // one shared path every input source goes through.
   const submitAndRespond = useCallback(
     async (
       id: string,
       provider: ProviderName,
-      text: string,
-    ): Promise<{ endCall: boolean; nextLang: string | null }> => {
-      setTranscript((prev) => [...prev, { speaker: "patient", text }]);
+      type: "utterance" | "silence" | "stt_error",
+      text?: string,
+    ): Promise<{ ended: boolean; nextLang: string }> => {
+      if (type === "utterance" && text) {
+        setTranscript((prev) => [...prev, { speaker: "patient", text }]);
+      }
       setPhase("processing");
-      const result = await demoApi.submitTurn(id, provider, text);
-      setLockedLanguage(result.locked_language || null);
-      setTopics(result.topics);
-      setTranscript((prev) => [...prev, { speaker: "agent", text: result.response_text }]);
+      const result = await demoApi.submitTurn(id, provider, type, text);
+      setNode(result.node);
+      setCallOutcome(result.call_outcome);
+      if (result.escalated) setEscalated(true);
+      setTranscript((prev) => [...prev, { speaker: "agent", text: result.display_text }]);
 
       setPhase("agent_speaking");
-      await speak(result.response_text, recognitionLangFor(result.locked_language));
+      await speak(result.speech_text, result.speech_lang);
 
-      if (result.end_call) {
-        setSummary(result.summary);
+      if (result.ended) {
         setPhase("ended");
       }
-      return { endCall: result.end_call, nextLang: result.locked_language || null };
+      return { ended: result.ended, nextLang: result.speech_lang };
     },
     [speak],
   );
@@ -218,16 +245,19 @@ export function useTurnController() {
   // calls another that isn't yet defined — this only ever calls itself, safely (the recursive call
   // only executes once the whole hook body has already finished running).
   const listenLoop = useCallback(
-    async (id: string, provider: ProviderName, lang: string | null): Promise<void> => {
+    async (id: string, provider: ProviderName, lang: string): Promise<void> => {
       setPhase("listening");
-      const text = await listenOnce(recognitionLangFor(lang));
-      if (!text || !text.trim()) {
+      const heard = await listenOnce(lang);
+      if (heard.kind === "none") {
         setPhase("listening");
         return;
       }
       try {
-        const { endCall, nextLang } = await submitAndRespond(id, provider, text);
-        if (!endCall) {
+        const { ended, nextLang } =
+          heard.kind === "text"
+            ? await submitAndRespond(id, provider, "utterance", heard.text)
+            : await submitAndRespond(id, provider, "silence");
+        if (!ended) {
           await listenLoop(id, provider, nextLang);
         }
       } catch (err) {
@@ -241,23 +271,24 @@ export function useTurnController() {
   );
 
   const startCall = useCallback(
-    async (provider: ProviderName) => {
+    async (input: StartCallRequest) => {
       setError(null);
       setTranscript([]);
-      setTopics([]);
-      setSummary(null);
-      setLockedLanguage(null);
+      setNode(null);
+      setCallOutcome(null);
+      setEscalated(false);
       setPhase("starting");
       try {
         const settings = await demoApi.getSettings();
         setVoiceGender(settings.voice_gender);
-        const result = await demoApi.startCall(provider);
+        const result = await demoApi.startCall(input);
         setCallId(result.call_id);
-        setTranscript([{ speaker: "agent", text: result.greeting_text }]);
+        setNode(result.node);
+        setTranscript([{ speaker: "agent", text: result.display_text }]);
 
         setPhase("agent_greeting");
-        await speak(result.greeting_text, "hi-IN");
-        await listenLoop(result.call_id, provider, null);
+        await speak(result.speech_text, result.speech_lang);
+        await listenLoop(result.call_id, input.provider, result.speech_lang);
       } catch (err) {
         setError(
           err instanceof DemoApiError ? err.message : "Couldn't start the call. Please try again.",
@@ -273,8 +304,8 @@ export function useTurnController() {
       if (!callId || !text.trim()) return;
       stopListening();
       try {
-        const { endCall, nextLang } = await submitAndRespond(callId, provider, text);
-        if (!endCall) {
+        const { ended, nextLang } = await submitAndRespond(callId, provider, "utterance", text);
+        if (!ended) {
           await listenLoop(callId, provider, nextLang);
         }
       } catch (err) {
@@ -308,21 +339,22 @@ export function useTurnController() {
     setCallId(null);
     setTranscript([]);
     setError(null);
-    setTopics([]);
-    setSummary(null);
-    setLockedLanguage(null);
+    setNode(null);
+    setCallOutcome(null);
+    setEscalated(false);
   }, [stopListening]);
 
   return {
     phase,
     callId,
     transcript,
-    lockedLanguage,
-    topics,
-    summary,
+    node,
+    callOutcome,
+    escalated,
     error,
     micSupported,
     ttsSupported,
+    chosenVoiceName: chosenVoiceNameRef,
     startCall,
     submitManualText,
     endCall,

@@ -113,6 +113,9 @@ function DemoSettingsCard() {
   const [hospitalName, setHospitalName] = useState("");
   const [agentName, setAgentName] = useState("");
   const [voiceGender, setVoiceGender] = useState<"female" | "male">("female");
+  const [hospitalPhone, setHospitalPhone] = useState("");
+  const [escalationSlaText, setEscalationSlaText] = useState("");
+  const [ttsScript, setTtsScript] = useState<"devanagari" | "roman">("devanagari");
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [hydrated, setHydrated] = useState(false);
 
@@ -121,6 +124,9 @@ function DemoSettingsCard() {
       setHospitalName(settings.hospital_name);
       setAgentName(settings.agent_name);
       setVoiceGender(settings.voice_gender);
+      setHospitalPhone(settings.hospital_phone ?? "");
+      setEscalationSlaText(settings.escalation_sla_text ?? "");
+      setTtsScript(settings.tts_script);
       setHydrated(true);
     }
   }, [settings, hydrated]);
@@ -141,6 +147,9 @@ function DemoSettingsCard() {
         hospital_name: hospitalName,
         agent_name: agentName,
         voice_gender: voiceGender,
+        hospital_phone: hospitalPhone || null,
+        escalation_sla_text: escalationSlaText || null,
+        tts_script: ttsScript,
       }),
     onSuccess: (data) => queryClient.setQueryData<DemoSettings>(["demo-settings"], data),
   });
@@ -180,17 +189,50 @@ function DemoSettingsCard() {
             />
           </div>
         </div>
-        <div className="space-y-1">
-          <Label htmlFor="voice-gender">Agent Voice</Label>
-          <Select
-            id="voice-gender"
-            className="w-40"
-            value={voiceGender}
-            onChange={(e) => setVoiceGender(e.target.value as "female" | "male")}
-          >
-            <option value="female">Female</option>
-            <option value="male">Male</option>
-          </Select>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <Label htmlFor="voice-gender">Agent Voice</Label>
+            <Select
+              id="voice-gender"
+              value={voiceGender}
+              onChange={(e) => setVoiceGender(e.target.value as "female" | "male")}
+            >
+              <option value="female">Female</option>
+              <option value="male">Male</option>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="tts-script">Hindi script for speech</Label>
+            <Select
+              id="tts-script"
+              value={ttsScript}
+              onChange={(e) => setTtsScript(e.target.value as "devanagari" | "roman")}
+            >
+              <option value="devanagari">Devanagari</option>
+              <option value="roman">Roman (Hinglish)</option>
+            </Select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <Label htmlFor="hospital-phone">Hospital phone (optional)</Label>
+            <Input
+              id="hospital-phone"
+              placeholder="For the close-out line, e.g. +91…"
+              value={hospitalPhone}
+              onChange={(e) => setHospitalPhone(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="escalation-sla">Escalation SLA text (optional)</Label>
+            <Input
+              id="escalation-sla"
+              placeholder="e.g. chaubees ghante"
+              value={escalationSlaText}
+              onChange={(e) => setEscalationSlaText(e.target.value)}
+            />
+          </div>
         </div>
 
         {voices.length > 0 && (
