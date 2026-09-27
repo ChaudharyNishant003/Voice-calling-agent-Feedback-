@@ -18,8 +18,10 @@ from app.domain.conversation_graph.state import (
     CallOutcome,
     CallState,
     ComplaintDraft,
+    Severity,
     TopicCategory,
 )
+from app.domain.enums import RespondentType
 from app.services import pfa_call_service as svc
 
 _PERSONA = svc.PersonaContext(
@@ -313,3 +315,84 @@ async def test_guard_truncates_an_overly_long_llm_reply() -> None:
     result = await _turn(state, registry, "Bahut kuch bataya")
     assert len(result.display_text.split()) <= 30
     assert any(evt == "GUARD_EVENT" for evt, _ in result.events)
+
+
+async def test_confirming_identity_sets_identity_verified_for_real() -> None:
+    """Regression test: confirmed live against the real Gemini API — identity_verified was never
+    actually set anywhere, so the pre-identity-disclosure guard kept firing on any later reply that
+    mentioned "doctor", silently replacing a normal acknowledgement with the consent FIXED line.
+    """
+    responses = [_contract(intents=["affirm"], proposed_next="purpose_consent_time")]
+    registry, llm = _registry(responses)
+    state = CallState(node=Node.open_and_identify)
+    result = await _turn(state, registry, "Haan ji, main bol raha hoon")
+    assert result.state.identity_verified is True
+    assert result.state.respondent_type == RespondentType.patient
+
+
+async def test_doctor_mention_not_blocked_by_privacy_guard_after_identity_confirmed() -> None:
+    responses = [
+        _contract(
+            reply_text="Doctor achhe, waiting zyada — samajh gayi. Waiting ke baare mein bataiye?",
+            topics=[
+                {
+                    "category": "doctor",
+                    "sentiment": "positive",
+                    "verbatim": "doctor achhe the",
+                    "staff_name": None,
+                }
+            ],
+            proposed_next="probe_topics",
+        )
+    ]
+    registry, llm = _registry(responses)
+    state = CallState(node=Node.open_experience, identity_verified=True)
+    result = await _turn(state, registry, "Doctor achhe the lekin waiting bahut zyada thi")
+    assert "Doctor achhe" in result.display_text
+    assert not any(evt == "GUARD_EVENT" for evt, _ in result.events)
+
+
+async def test_repeated_identical_topic_is_deduplicated() -> None:
+    """Regression test: confirmed live — the same reception complaint showed up as 3 identical
+    topic entries on the results page because the LLM re-reported it across several turns.
+    """
+    topic = {
+        "category": "reception",
+        "sentiment": "negative",
+        "verbatim": "rude staff at reception",
+        "staff_name": None,
+    }
+    responses = [
+        _contract(topics=[topic], proposed_next="probe_topics"),
+        _contract(topics=[topic], proposed_next="probe_topics"),
+    ]
+    registry, llm = _registry(responses)
+    state = CallState(node=Node.open_experience, identity_verified=True)
+    result = await _turn(state, registry, "Reception rude tha")
+    result = await _turn(result.state, registry, "Haan wahi baat")
+    assert len(result.state.topics) == 1
+
+
+async def test_already_logged_complaint_appears_in_state_summary_sent_to_llm() -> None:
+    """Regression test: confirmed live — a resolved complaint (current_complaint_index cleared by
+    severity_gate) was invisible to probe_topics' own "don't re-raise it" instruction, so the same
+    reception complaint got logged twice. The state summary must list it once resolved.
+    """
+    responses = [_contract(proposed_next="probe_topics")]
+    registry, llm = _registry(responses)
+    state = CallState(
+        node=Node.probe_topics,
+        identity_verified=True,
+        complaints=(
+            ComplaintDraft(
+                category=TopicCategory.reception,
+                description="Rude reception staff",
+                severity=Severity.s1,
+            ),
+        ),
+        current_complaint_index=None,
+    )
+    await _turn(state, registry, "kuch aur")
+    sent_transcript = llm.calls[0][1]["input_transcript"]
+    assert isinstance(sent_transcript, str)
+    assert "Rude reception staff" in sent_transcript

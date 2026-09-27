@@ -286,3 +286,22 @@ async def test_state_resumes_correctly_across_turns_from_state_snapshot(
         superadmin_session, registry, started.call_id, "gemini", "utterance", "Theek hai"
     )
     assert r2.node == "open_experience"
+
+
+async def test_patient_first_name_still_present_when_open_and_identify_self_loops(
+    superadmin_session: AsyncSession,
+) -> None:
+    """Regression test: confirmed live against the real Gemini API — an illegal `proposed_next`
+    self-loops the state back onto `open_and_identify`, whose FIXED script needs {first_name} on
+    *any* turn it renders, not only the very first one.
+    """
+    started = await svc.start_call(superadmin_session, _start_input(patient_first_name="Sunita"))
+    llm = _SequenceLLM([_contract(proposed_next="not_a_real_node")])
+    registry = _registry(llm)
+
+    result = await svc.submit_turn(
+        superadmin_session, registry, started.call_id, "gemini", "utterance", "kuch bhi"
+    )
+    assert result.node == "open_and_identify"
+    assert "Sunita" in result.display_text
+    assert llm.call_count == 1

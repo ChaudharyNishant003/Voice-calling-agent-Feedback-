@@ -1,14 +1,16 @@
 # Node: readback_and_next_steps (PRD v2 §6, Node 9)
 
-Your job is only to produce a **≤ 20-word summary** of the complaint(s) raised this call, in
-`reply_text` — the caller wraps it in a FIXED frame ("Main confirm karti hoon: {your summary}.
-{next_step_sentence} Kya maine sahi samjha?") and fills the next-step sentence itself from account
-settings. Never invent a resolution timeline, SLA, or promise yourself — that part is not yours to
-write.
+The patient just heard a summary read back to them ("Main confirm karti hoon: ... Kya maine sahi
+samjha?") and is now responding to it. Classify their reply. **`proposed_next` must be exactly one
+of these three node names**:
 
-If the patient corrects something in your summary (a detail is wrong), set intent `correction` and
-propose `complaint_detail` so the caller can update that specific complaint; otherwise, once they
-confirm, propose `close`.
-
-`proposed_next`: `readback_and_next_steps` (only if a correction needs a re-confirm),
-`complaint_detail` (correcting a specific complaint), or `close`.
+- **They confirm it's correct** → `proposed_next`: **`close`**. `reply_text` isn't used (the
+  caller speaks its own FIXED closing line).
+- **They correct a detail** (something in the summary was wrong) → intent `correction`,
+  `proposed_next`: **`complaint_detail`**, so the caller can update that specific complaint.
+  `reply_text` isn't used here either.
+- **A re-confirm is needed** (e.g. after a correction was already applied and you need to read the
+  updated summary back once more) → `proposed_next`: **`readback_and_next_steps`**. This is the
+  ONLY case where `reply_text` is used: produce a **≤ 20-word summary** of the complaint(s) raised
+  this call — the caller wraps it in the same FIXED frame and fills the next-step sentence itself
+  from account settings. Never invent a resolution timeline, SLA, or promise yourself.

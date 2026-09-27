@@ -336,12 +336,19 @@ def _state_summary(state: CallState) -> str:
     if idx is not None and idx < len(state.complaints):
         open_complaint = state.complaints[idx]
     known_fields = _known_complaint_fields(open_complaint) if open_complaint else []
+    # Every complaint already logged this call, not just the currently-open one — without this,
+    # probe_topics' own "depth first: follow up on a negative topic that hasn't become a complaint
+    # yet" instruction has nothing to check against once a complaint is closed out (current_
+    # complaint_index clears back to None at severity_gate), and the LLM re-raises the same issue
+    # as a brand-new complaint. Confirmed live: a reception complaint was logged twice this way.
+    already_logged = [c.description for c in state.complaints if c is not open_complaint]
     parts = [
         f"node={state.node.value}",
         f"identity_verified={state.identity_verified}",
         f"respondent_type={state.respondent_type.value}",
         f"topics_covered={sorted(t.value for t in state.topics_covered)}",
         f"rating_asked={state.rating_asked}",
+        f"already_logged_complaints={already_logged}",
         f"open_complaint={open_complaint.description if open_complaint else None}",
         f"open_complaint_questions_asked={open_complaint.question_count if open_complaint else 0}",
         f"open_complaint_known_fields={known_fields}",
@@ -387,17 +394,28 @@ def _map_topic_category(raw: str) -> TopicCategory:
 
 
 def _merge_topics(state: CallState, contract: NodeContract) -> CallState:
-    new_topics = tuple(
-        TopicMention(
-            category=_map_topic_category(t.category),
-            sentiment=Sentiment(t.sentiment),
-            verbatim=t.verbatim,
-            staff_name=t.staff_name,
+    # The LLM often re-reports a topic it already mentioned in an earlier turn (still visible in
+    # its own recent-history window) — confirmed live: the same reception complaint showed up as
+    # 3 identical topic entries on the results page. Dedupe by (category, verbatim) rather than
+    # trusting the LLM to only ever report genuinely new mentions.
+    seen = {(t.category, t.verbatim) for t in state.topics}
+    new_topics = []
+    for t in contract.topics:
+        category = _map_topic_category(t.category)
+        key = (category, t.verbatim)
+        if key in seen:
+            continue
+        seen.add(key)
+        new_topics.append(
+            TopicMention(
+                category=category,
+                sentiment=Sentiment(t.sentiment),
+                verbatim=t.verbatim,
+                staff_name=t.staff_name,
+            )
         )
-        for t in contract.topics
-    )
     covered = state.topics_covered | {t.category for t in new_topics}
-    return replace(state, topics=state.topics + new_topics, topics_covered=covered)
+    return replace(state, topics=state.topics + tuple(new_topics), topics_covered=covered)
 
 
 def _merge_complaint(state: CallState, contract: NodeContract) -> CallState:
@@ -621,6 +639,27 @@ def _apply_transition(
     events: list[Event],
 ) -> TurnResult:
     new_state = replace(state, node=resolved)
+
+    # PRD §6 Node 1/1b: confirming identity (directly, or via an accompanying caregiver) is what
+    # actually clears `identity_verified` — never set anywhere else. Without this, the pre-identity
+    # disclosure guard (GUARD_PRIVACY) fires for the rest of the call the instant any reply
+    # mentions "doctor"/"department"/etc., confirmed live: a normal open_experience
+    # acknowledgement ("Doctor achhe...") got silently replaced by the consent FIXED line because
+    # this was never set.
+    if (
+        state.node == Node.open_and_identify
+        and resolved == Node.purpose_consent_time
+        and "affirm" in contract.intents
+    ):
+        new_state = replace(
+            new_state, identity_verified=True, respondent_type=RespondentType.patient
+        )
+    elif (
+        state.node == Node.caregiver
+        and resolved == Node.purpose_consent_time
+        and "accompanied" in contract.intents
+    ):
+        new_state = replace(new_state, identity_verified=True, respondent_type=RespondentType.proxy)
 
     if resolved == Node.close_wrong:
         new_state = replace(new_state, ended=True, call_outcome=CallOutcome.wrong_number)
@@ -1262,12 +1301,23 @@ async def submit_turn(
     settings = await demo_settings_service.get_settings(session)
     visit = await session.get(Visit, call.visit_id)
     assert visit is not None  # a call always has the visit created alongside it in start_call
+    patient = await session.get(Patient, visit.patient_ref_id)
+    assert patient is not None
+
+    # `open_and_identify`'s FIXED script (which needs {first_name}) isn't limited to the very
+    # first turn — an illegal `proposed_next` self-loops the state right back onto it, confirmed
+    # live against the real Gemini API (it hallucinated a non-existent node name on turn 2 of a
+    # real call). Decrypting the name every turn, not just at start_call, is the only correct fix.
+    first_name = ""
+    if patient.first_name_enc is not None:
+        kek = get_local_kek()
+        dek = await get_or_create_dek(session, call.account_id, kek=kek)
+        first_name = decrypt(patient.first_name_enc, dek)
 
     state = deserialize_state(call.state_snapshot or {})
     persona = _persona_from_settings(
         settings,
-        first_name="",  # not needed after the greeting; scripts referencing {first_name} are only
-        # rendered in open_and_identify, which has already happened by any subsequent turn.
+        first_name=first_name,
         visit_date=visit.visit_date,
         locked_family=state.language.locked,
     )

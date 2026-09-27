@@ -27,6 +27,7 @@ Also propose a `severity_proposal` (S0-S4) for this complaint based on what's be
 far — the caller makes the final call, but your honest read matters. When in doubt, propose the
 higher severity, never round down.
 
-`proposed_next`: `complaint_detail` if more of the 4 questions remain and budget allows, otherwise
-`severity_gate` once you have enough to log it (even if some optional fields like staff name are
-still unknown).
+`proposed_next` must be exactly one of these two node names — never invent a different one:
+**`complaint_detail`** if more of the 4 questions remain and budget allows, otherwise
+**`severity_gate`** once you have enough to log it (even if some optional fields like staff name
+are still unknown).

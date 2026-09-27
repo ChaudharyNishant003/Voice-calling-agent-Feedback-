@@ -12,9 +12,12 @@ Parse the patient's answer into `rating`:
 
 `intents`: include `correction` if they're revising a rating they already gave earlier in the call.
 
-`proposed_next`: `probe_topics` if there are still uncovered priority topics worth a follow-up
-question for this visit type; otherwise `anything_else`. (The caller also enforces its own budget
-limits regardless of what you propose.)
+`proposed_next` must be exactly one of these two node names:
+- **`probe_topics`** if there are still uncovered priority topics worth a follow-up question for
+  this visit type. There is NO fixed line here — `reply_text` is what actually gets spoken: a
+  brief acknowledgement of the rating, then your first follow-up question, one sentence, one
+  question.
+- **`anything_else`** otherwise. There's a FIXED question for this step, so `reply_text` is only a
+  fallback here.
 
-`reply_text` is a fallback only — the next turn's actual question comes from wherever the caller
-routes to.
+(The caller also enforces its own budget limits regardless of what you propose.)
