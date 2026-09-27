@@ -206,6 +206,8 @@ Columns: code · HTTP · log level · meaning · user message (UI key `err.<code
 | PFA-DEMO-009 | 429 | Provider rate limit hit — e.g. a free-tier model's daily request cap (Demo MVP) | "This model is rate-limited right now. Try a different model, or wait and retry." |
 | PFA-DEMO-010 | 422 | Demo call start attempted for a patient on the do-not-call list (PRD v2) | "This patient has opted out of future calls." |
 | PFA-DEMO-011 | 404 | Escalation ID doesn't exist (PRD v2) | "That escalation couldn't be found." |
+| PFA-DEMO-012 | 404 | Visit ID doesn't exist, starting a call from an ingested visit (PRD v2 Phase 8) | "That visit couldn't be found." |
+| PFA-DEMO-013 | 422 | Starting a call from a visit that already has 3 call attempts (PRD v2 Phase 8) | "This visit has already had the maximum of 3 call attempts." |
 | PFA-API-001 | 422 | Request validation | "Some fields need attention." (+ field errors) |
 | PFA-API-002 | 429 | Rate limited | "You're going a bit fast. Please wait {seconds} seconds." |
 | PFA-API-003 | 409 | Idempotency key reused with different body | "This request conflicts with an earlier one. Refresh and try again." |

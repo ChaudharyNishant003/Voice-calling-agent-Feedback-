@@ -89,6 +89,10 @@ export default function DemoCallPage() {
   const [department, setDepartment] = useState("");
   const [doctorName, setDoctorName] = useState("");
 
+  // PRD v2 Phase 8: start from a visit that already exists via the existing CSV ingestion.
+  const [fromVisitId, setFromVisitId] = useState("");
+  const [fromVisitFirstName, setFromVisitFirstName] = useState("");
+
   const {
     phase,
     callId,
@@ -100,6 +104,7 @@ export default function DemoCallPage() {
     micSupported,
     ttsSupported,
     startCall,
+    startCallFromVisit,
     submitManualText,
     endCall,
     reset,
@@ -242,6 +247,45 @@ export default function DemoCallPage() {
             </div>
           </CardContent>
         </Card>
+
+        {phase === "idle" && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">
+                Or start from an already-ingested visit
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-wrap items-end gap-3">
+              <div className="w-72 space-y-1">
+                <Label htmlFor="from-visit-id">Visit ID</Label>
+                <Input
+                  id="from-visit-id"
+                  placeholder="Paste a visit_id from CSV ingestion"
+                  value={fromVisitId}
+                  onChange={(e) => setFromVisitId(e.target.value)}
+                />
+              </div>
+              <div className="w-48 space-y-1">
+                <Label htmlFor="from-visit-first-name">Patient name (optional)</Label>
+                <Input
+                  id="from-visit-first-name"
+                  placeholder="Not stored by ingestion"
+                  value={fromVisitFirstName}
+                  onChange={(e) => setFromVisitFirstName(e.target.value)}
+                />
+              </div>
+              <Button
+                variant="outline"
+                disabled={!fromVisitId.trim()}
+                onClick={() =>
+                  startCallFromVisit(fromVisitId.trim(), provider, fromVisitFirstName || undefined)
+                }
+              >
+                Start Feedback Call
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
         {(isActive || phase === "ended") && (
           <Card>

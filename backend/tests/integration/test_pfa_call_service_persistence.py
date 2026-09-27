@@ -18,8 +18,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.adapters.interfaces import LLMResult
 from app.adapters.registry import AdapterRegistry
+from app.core.config import get_settings
+from app.core.ids import uuid7
+from app.core.phone import phone_hash
+from app.core.security import encrypt, get_local_kek
 from app.db.models.cases import Case, Complaint, PfaEscalation
 from app.db.models.demo import Callback, DoNotCall
+from app.db.models.enums import VisitType
+from app.db.models.patients_visits import Patient, Visit
+from app.db.repositories.encryption_keys import get_or_create_dek
+from app.services import demo_conversation_service
 from app.services import pfa_call_service as svc
 
 
@@ -305,3 +313,89 @@ async def test_patient_first_name_still_present_when_open_and_identify_self_loop
     assert result.node == "open_and_identify"
     assert "Sunita" in result.display_text
     assert llm.call_count == 1
+
+
+async def _ingested_visit(superadmin_session: AsyncSession) -> Visit:
+    """Simulates a row that came from the existing S1.6 CSV ingestion (a Patient/Visit pair with
+    no first_name_enc — REQUIRED_COLUMNS in domain/ingestion_csv.py has no name field at all) —
+    without driving the actual Celery-backed upload pipeline, which this test doesn't need to
+    exercise; it only needs a real, pre-existing visit for start_call_from_visit to read.
+    """
+    account = await demo_conversation_service.get_or_create_demo_account(superadmin_session)
+    location = await demo_conversation_service.get_or_create_demo_location(
+        superadmin_session, account.account_id
+    )
+    department = await demo_conversation_service.get_or_create_demo_department(
+        superadmin_session, account.account_id
+    )
+    kek = get_local_kek()
+    dek = await get_or_create_dek(superadmin_session, account.account_id, kek=kek)
+    pepper = get_settings().phone_hash_pepper
+    phone = "+919800011122"
+    patient = Patient(
+        patient_ref_id=uuid7(),
+        account_id=account.account_id,
+        external_patient_id=f"csv-{uuid7().hex}",
+        phone_hash=bytes.fromhex(phone_hash(phone, pepper=pepper)),
+        phone_e164_enc=encrypt(phone, dek),
+        phone_last4=phone[-4:],
+    )
+    superadmin_session.add(patient)
+    await superadmin_session.flush()
+
+    visit = Visit(
+        visit_id=uuid7(),
+        account_id=account.account_id,
+        location_id=location.location_id,
+        patient_ref_id=patient.patient_ref_id,
+        department_id=department.department_id,
+        external_visit_key=f"csv-{uuid7().hex}",
+        visit_date=date(2026, 9, 20),
+        visit_type=VisitType.outpatient,
+        patient_age=40,
+    )
+    superadmin_session.add(visit)
+    await superadmin_session.flush()
+    return visit
+
+
+async def test_start_call_from_visit_uses_operator_supplied_name(
+    superadmin_session: AsyncSession,
+) -> None:
+    visit = await _ingested_visit(superadmin_session)
+    result = await svc.start_call_from_visit(
+        superadmin_session, visit_id=visit.visit_id, provider="gemini", patient_first_name="Anita"
+    )
+    assert "Anita" in result.display_text
+    assert result.node == "open_and_identify"
+
+
+async def test_start_call_from_visit_reuses_saved_name_on_a_second_call(
+    superadmin_session: AsyncSession,
+) -> None:
+    visit = await _ingested_visit(superadmin_session)
+    first = await svc.start_call_from_visit(
+        superadmin_session, visit_id=visit.visit_id, provider="gemini", patient_first_name="Anita"
+    )
+    # A visit can only have one active call at a time — end it before the next attempt, same as a
+    # real retry would.
+    await svc.end_call(superadmin_session, first.call_id)
+    # A second call for the same patient (e.g. a retry) doesn't need the name repeated.
+    result = await svc.start_call_from_visit(
+        superadmin_session, visit_id=visit.visit_id, provider="gemini", patient_first_name=None
+    )
+    assert "Anita" in result.display_text
+
+
+async def test_start_call_from_visit_404s_for_an_unknown_visit(
+    superadmin_session: AsyncSession,
+) -> None:
+    from uuid import uuid4
+
+    try:
+        await svc.start_call_from_visit(
+            superadmin_session, visit_id=uuid4(), provider="gemini", patient_first_name="X"
+        )
+        raise AssertionError("expected VisitNotFoundError")
+    except svc.VisitNotFoundError as exc:
+        assert exc.code == "PFA-DEMO-012"

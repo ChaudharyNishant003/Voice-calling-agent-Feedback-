@@ -384,7 +384,22 @@ for a configured provider, leaking a raw `KeyError` instead of the catalogued er
 regression-tested — see the "fix: conversation-quality bugs found live-testing against real Gemini"
 commit for the full detail on each.
 
-**Not yet built:** the 40-scenario harness, CSV-ingested-visit call start, README/final report.
+**Phase 8 (CSV-ingested-visit call start) — done.** `pfa_call_service.start_call_from_visit(session,
+visit_id, provider, patient_first_name)` starts a call against a `Visit` row that already exists
+(e.g. from the Sprint 1 CSV ingestion), instead of creating a fresh `Patient`+`Visit` per call the
+way the patient/visit form does. `POST /demo/calls/from-visit/{visit_id}` (new route) and a "start
+from an already-ingested visit" card on `/demo` (Visit ID + optional patient name, since ingestion
+stores no name by design — see Phase 5's `first_name_enc` note) call it.
+
+Two real constraint bugs surfaced writing this, both confirming existing production invariants
+rather than needing new ones: the `calls` table's `UNIQUE(visit_id, attempt_no)` meant a second call
+against the same visit needs its `attempt_no` computed as `MAX(attempt_no)+1` (capped at 3, raising
+`PFA-DEMO-013` past that) rather than always starting at 1; and `one_active_call_per_visit` meant a
+test driving two consecutive calls against the same visit had to `end_call()` the first — correct
+behaviour, so the test was fixed, not the constraint. 396 tests green (adds 10 for this feature);
+ruff/mypy --strict/lint-imports/eslint/tsc clean.
+
+**Not yet built:** the 40-scenario harness, README/final report.
 
 ## Sprint 2 — Orchestration & telephony
 - [ ] **S2.1 Contact window + retry policy** (pure) with exhaustive boundary tests.

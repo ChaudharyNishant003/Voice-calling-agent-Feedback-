@@ -907,6 +907,14 @@ _VISIT_KIND_TO_ENGINE: dict[str, VisitKind] = {
     "DIAGNOSTICS": VisitKind.diagnostics,
     "EMERGENCY": VisitKind.emergency,
 }
+# Inverse of _VISIT_KIND_TO_DB — needed when a call starts from an already-ingested Visit row
+# (PRD v2 Phase 8), which already has a DB VisitType, not a PRD-form VisitKind string.
+_DB_VISIT_TYPE_TO_ENGINE: dict[VisitType, VisitKind] = {
+    VisitType.outpatient: VisitKind.opd,
+    VisitType.inpatient: VisitKind.ipd,
+    VisitType.diagnostic: VisitKind.diagnostics,
+    VisitType.emergency: VisitKind.emergency,
+}
 
 # S3/S4 severities always create a Case (PRD §7.1); the ack SLA hours are a Demo MVP simplification
 # (the real SLA engine is Sprint 5, not yet built anywhere in this codebase) rather than reading
@@ -1240,6 +1248,111 @@ async def start_call(session: AsyncSession, data: StartCallInput) -> TurnApiResu
     call.state_snapshot = _serialize_state(state)
     await _persist_transcript_turn(
         session, call.call_id, account.account_id, "agent", result.display_text, 0
+    )
+    await _emit_call_event(session, call.call_id, "AGENT_GREETING", {"text": result.display_text})
+    await session.flush()
+
+    return TurnApiResult(
+        call_id=call.call_id,
+        display_text=result.display_text,
+        speech_text=result.speech_text,
+        speech_lang=result.speech_lang,
+        node=state.node.value,
+        ended=False,
+        call_outcome=None,
+        escalated=False,
+    )
+
+
+class VisitNotFoundError(PFANotFoundError):
+    pass
+
+
+async def start_call_from_visit(
+    session: AsyncSession, *, visit_id: UUID, provider: str, patient_first_name: str | None
+) -> TurnApiResult:
+    """PRD v2 Phase 8: starts a call from a visit that already exists — via the existing S1.6 CSV
+    ingestion, unmodified — instead of creating a fresh Patient/Visit like `start_call` does.
+
+    Ingested rows never carry a patient name (`REQUIRED_COLUMNS` in `domain/ingestion_csv.py` has
+    none — a deliberate data-minimisation choice, not an oversight) — the open_and_identify FIXED
+    script needs one regardless, so the caller (the demo operator, who knows who they're calling)
+    supplies it here. It's saved onto the patient record the first time, same encrypted-at-rest
+    field `start_call` populates, so a second call to the same patient doesn't need it repeated.
+    """
+    visit = await session.get(Visit, visit_id)
+    if visit is None:
+        raise VisitNotFoundError("PFA-DEMO-012", message="That visit couldn't be found.")
+    patient = await session.get(Patient, visit.patient_ref_id)
+    assert patient is not None  # a visit always has a patient row (FK NOT NULL)
+
+    already_blocked = await session.scalar(
+        select(DoNotCall).where(
+            DoNotCall.account_id == visit.account_id, DoNotCall.phone_hash == patient.phone_hash
+        )
+    )
+    if already_blocked is not None:
+        raise PatientOnDoNotCallError(
+            "PFA-DEMO-010", message="This patient has opted out of future calls."
+        )
+
+    settings = await demo_settings_service.get_settings(session)
+    kek = get_local_kek()
+    dek = await get_or_create_dek(session, visit.account_id, kek=kek)
+    if patient.first_name_enc is not None:
+        first_name = decrypt(patient.first_name_enc, dek)
+    elif patient_first_name:
+        first_name = patient_first_name
+        patient.first_name_enc = encrypt(patient_first_name, dek)
+    else:
+        first_name = "Patient"
+
+    # `calls` has a UNIQUE(visit_id, attempt_no) constraint and a CHECK(attempt_no BETWEEN 1 AND
+    # 3) (migration 0006, CLAUDE.md's "max 2 retries" rule) — unlike `start_call`, which always
+    # creates a brand-new Visit and so never collides, this reuses the same Visit every time, so a
+    # second demo call for it needs the next attempt number, not a hardcoded 1.
+    existing_attempts = await session.scalar(
+        select(func.max(Call.attempt_no)).where(Call.visit_id == visit.visit_id)
+    )
+    next_attempt_no = (existing_attempts or 0) + 1
+    if next_attempt_no > 3:
+        raise PFAValidationError(
+            "PFA-DEMO-013", message="This visit has already had the maximum of 3 call attempts."
+        )
+
+    now = datetime.now(UTC)
+    call = Call(
+        call_id=uuid7(),
+        account_id=visit.account_id,
+        visit_id=visit.visit_id,
+        campaign_type=CampaignType.service_feedback,
+        attempt_no=next_attempt_no,
+        scheduled_at=now,
+        started_at=now,
+        answered_at=now,
+        status=CallStatus.in_progress,
+        consent_state=ConsentState.granted_unrecorded,
+        consent_at=now,
+        respondent=RespondentType.unknown,
+        languages_used=[],
+        turn_count=0,
+    )
+    session.add(call)
+    await session.flush()
+
+    await _emit_call_event(
+        session, call.call_id, "CALL_STARTED", {"provider": provider, "source": "csv_ingestion"}
+    )
+
+    persona = _persona_from_settings(
+        settings, first_name=first_name, visit_date=visit.visit_date, locked_family=None
+    )
+    result = start_turn(persona)
+    state = replace(result.state, visit_kind=_DB_VISIT_TYPE_TO_ENGINE[visit.visit_type])
+
+    call.state_snapshot = _serialize_state(state)
+    await _persist_transcript_turn(
+        session, call.call_id, visit.account_id, "agent", result.display_text, 0
     )
     await _emit_call_event(session, call.call_id, "AGENT_GREETING", {"text": result.display_text})
     await session.flush()

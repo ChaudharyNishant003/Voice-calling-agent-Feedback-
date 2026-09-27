@@ -270,8 +270,11 @@ export function useTurnController() {
     [listenOnce, submitAndRespond],
   );
 
-  const startCall = useCallback(
-    async (input: StartCallRequest) => {
+  const beginFromStartResult = useCallback(
+    async (
+      provider: ProviderName,
+      run: () => Promise<Awaited<ReturnType<typeof demoApi.startCall>>>,
+    ) => {
       setError(null);
       setTranscript([]);
       setNode(null);
@@ -281,14 +284,14 @@ export function useTurnController() {
       try {
         const settings = await demoApi.getSettings();
         setVoiceGender(settings.voice_gender);
-        const result = await demoApi.startCall(input);
+        const result = await run();
         setCallId(result.call_id);
         setNode(result.node);
         setTranscript([{ speaker: "agent", text: result.display_text }]);
 
         setPhase("agent_greeting");
         await speak(result.speech_text, result.speech_lang);
-        await listenLoop(result.call_id, input.provider, result.speech_lang);
+        await listenLoop(result.call_id, provider, result.speech_lang);
       } catch (err) {
         setError(
           err instanceof DemoApiError ? err.message : "Couldn't start the call. Please try again.",
@@ -297,6 +300,21 @@ export function useTurnController() {
       }
     },
     [speak, listenLoop],
+  );
+
+  const startCall = useCallback(
+    (input: StartCallRequest) => beginFromStartResult(input.provider, () => demoApi.startCall(input)),
+    [beginFromStartResult],
+  );
+
+  // PRD v2 Phase 8: start a call from a visit that already exists via the existing CSV ingestion,
+  // instead of the patient/visit form.
+  const startCallFromVisit = useCallback(
+    (visitId: string, provider: ProviderName, patientFirstName?: string) =>
+      beginFromStartResult(provider, () =>
+        demoApi.startCallFromVisit(visitId, provider, patientFirstName),
+      ),
+    [beginFromStartResult],
   );
 
   const submitManualText = useCallback(
@@ -356,6 +374,7 @@ export function useTurnController() {
     ttsSupported,
     chosenVoiceName: chosenVoiceNameRef,
     startCall,
+    startCallFromVisit,
     submitManualText,
     endCall,
     reset,

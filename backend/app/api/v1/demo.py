@@ -100,6 +100,11 @@ class StartCallRequest(BaseModel):
     patient_age: int | None = None
 
 
+class StartCallFromVisitRequest(BaseModel):
+    provider: Literal["gemini", "openai"]
+    patient_first_name: str | None = None
+
+
 class ConversationTurnResponse(BaseModel):
     call_id: str
     display_text: str
@@ -404,6 +409,33 @@ async def start_call(
             doctor_name=body.doctor_name,
             patient_age=body.patient_age,
         ),
+    )
+    return ConversationTurnResponse(
+        call_id=str(result.call_id),
+        display_text=result.display_text,
+        speech_text=result.speech_text,
+        speech_lang=result.speech_lang,
+        node=result.node,
+        ended=result.ended,
+        call_outcome=result.call_outcome,
+        escalated=result.escalated,
+    )
+
+
+@router.post("/calls/from-visit/{visit_id}")
+async def start_call_from_visit(
+    visit_id: UUID,
+    body: StartCallFromVisitRequest,
+    session: AsyncSession = Depends(get_superadmin_db_session),
+) -> ConversationTurnResponse:
+    """PRD v2 Phase 8: start a demo call from a visit that already exists via the existing S1.6
+    CSV ingestion, instead of the patient/visit form `start_call` above uses.
+    """
+    result = await pfa_call_service.start_call_from_visit(
+        session,
+        visit_id=visit_id,
+        provider=body.provider,
+        patient_first_name=body.patient_first_name,
     )
     return ConversationTurnResponse(
         call_id=str(result.call_id),

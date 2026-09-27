@@ -210,6 +210,12 @@ export const demoApi = {
       body: JSON.stringify(body),
     }),
 
+  startCallFromVisit: (visitId: string, provider: ProviderName, patientFirstName?: string) =>
+    request<ConversationTurnResponse>(`/demo/calls/from-visit/${visitId}`, {
+      method: "POST",
+      body: JSON.stringify({ provider, patient_first_name: patientFirstName || null }),
+    }),
+
   submitTurn: (callId: string, provider: ProviderName, type: TurnEventType, text?: string) =>
     request<ConversationTurnResponse>(`/demo/calls/${callId}/turns`, {
       method: "POST",
