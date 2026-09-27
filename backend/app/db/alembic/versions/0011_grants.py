@@ -32,6 +32,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from alembic import op
+from sqlalchemy import text
 
 from app.core.config import get_settings
 
@@ -45,10 +46,25 @@ def _sql_literal(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
+def _current_database() -> str:
+    """The GRANT/REVOKE ... ON DATABASE statements below used to hardcode `pfa` (the local
+    docker-compose database name) — broke the first time this ran against a database with any
+    other name (e.g. Railway's default Postgres template database, `railway`). Every environment
+    this migration runs in is already connected to the one database it needs to grant on, so
+    reading it back from the connection itself is both correct and simpler than adding yet another
+    setting.
+    """
+    result = op.get_bind().execute(text("SELECT current_database()")).scalar()
+    assert result, "current_database() returned nothing — not connected to a database?"
+    name = str(result)
+    return '"' + name.replace('"', '""') + '"'
+
+
 def upgrade() -> None:
     settings = get_settings()
     app_password = _sql_literal(settings.pfa_app_db_password)
     superadmin_password = _sql_literal(settings.pfa_superadmin_db_password)
+    db_name = _current_database()
 
     op.execute(
         f"DO $$ BEGIN "
@@ -62,7 +78,7 @@ def upgrade() -> None:
     )
 
     for role in ("pfa_app", "pfa_superadmin"):
-        op.execute(f"GRANT CONNECT ON DATABASE pfa TO {role}")
+        op.execute(f"GRANT CONNECT ON DATABASE {db_name} TO {role}")
         op.execute(f"GRANT USAGE ON SCHEMA public TO {role}")
         op.execute(f"GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA public TO {role}")
         op.execute(f"GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO {role}")
@@ -74,10 +90,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    db_name = _current_database()
     for role in ("pfa_app", "pfa_superadmin"):
         op.execute(f"REVOKE ALL ON ALL TABLES IN SCHEMA public FROM {role}")
         op.execute(f"REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM {role}")
         op.execute(f"REVOKE USAGE ON SCHEMA public FROM {role}")
-        op.execute(f"REVOKE CONNECT ON DATABASE pfa FROM {role}")
+        op.execute(f"REVOKE CONNECT ON DATABASE {db_name} FROM {role}")
     op.execute("DROP ROLE IF EXISTS pfa_app")
     op.execute("DROP ROLE IF EXISTS pfa_superadmin")
